@@ -64,12 +64,13 @@ All checks passed!
 
 ## Git 提交
 
-提交信息：`feat: initialize SmartShop AI backend`
+提交信息：`feat: initialize SmartShop AI backend`  
+提交哈希：`d0d1448`
 
 ## 第一天验收
 
 - [ ] 已学习（需本人完成知识复习并确认）
 - [x] 已开发
 - [x] 已测试
-- [ ] 已提交 Git（首次提交后更新）
+- [x] 已提交 Git
 - [x] 工程验收通过
