@@ -83,5 +83,8 @@ All checks passed!
 - [ ] 已学习（需本人完成知识复习并确认）
 - [x] 已开发
 - [x] 已测试
-- [ ] 已提交 Git（首次提交后更新）
+- [x] 已提交 Git
 - [x] 工程验收通过
+
+提交信息：`feat: add core tables and demo seed data`  
+提交哈希：`5dac1bf`
