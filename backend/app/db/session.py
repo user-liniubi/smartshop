@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -21,12 +21,20 @@ class Database:
                 engine_options["poolclass"] = StaticPool
 
         self.engine = create_engine(url, **engine_options)
+        if url.startswith("sqlite"):
+            event.listen(self.engine, "connect", self._enable_sqlite_foreign_keys)
         self.session_factory = sessionmaker(
             bind=self.engine,
             class_=Session,
             autoflush=False,
             expire_on_commit=False,
         )
+
+    @staticmethod
+    def _enable_sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
     def dispose(self) -> None:
         self.engine.dispose()

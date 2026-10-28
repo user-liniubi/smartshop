@@ -72,6 +72,33 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
+## 演示数据
+
+首次运行或需要补齐演示数据时执行：
+
+```powershell
+uv run python -m sample_data.seed
+```
+
+脚本可重复运行，不会重复创建已有账号、商品和订单。
+
+| 账号 | 密码 | 角色 | 说明 |
+|---|---|---|---|
+| `consumer_demo` | `Demo123!` | consumer | 主演示消费者，拥有 3 条虚构订单 |
+| `consumer_other` | `Demo123!` | consumer | 越权测试消费者，拥有 2 条虚构订单 |
+| `agent_demo` | `Agent123!` | agent | 后续人工客服阶段使用 |
+
+这些账号和订单仅用于本地演示，不代表真实交易数据。
+
+核心表：
+
+- `users`：消费者与客服账号
+- `products`：演示商品
+- `orders`：带用户归属的虚构订单
+- `chat_sessions`：会话状态与槽位
+- `chat_messages`：对话消息
+- `handoffs`：人工接管记录
+
 ## 测试与检查
 
 ```powershell
