@@ -4,34 +4,40 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from backend.app.core.config import get_settings
+from backend.app.api.router import api_router
+from backend.app.core.config import Settings, get_settings
 from backend.app.core.exceptions import register_exception_handlers
 from backend.app.core.logging import configure_logging
-from backend.app.schemas.health import HealthResponse
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    configure_logging(settings.log_level)
-    logger.info("Starting %s in %s mode", settings.app_name, settings.app_env)
-    yield
-    logger.info("Stopping %s", settings.app_name)
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Create and configure the FastAPI application."""
+
+    application_settings = settings or get_settings()
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        configure_logging(application_settings.log_level)
+        logger.info(
+            "Starting %s in %s mode",
+            application_settings.app_name,
+            application_settings.app_env,
+        )
+        yield
+        logger.info("Stopping %s", application_settings.app_name)
+
+    application = FastAPI(
+        title=application_settings.app_name,
+        version="0.2.0",
+        debug=application_settings.debug,
+        lifespan=lifespan,
+    )
+    application.state.settings = application_settings
+    register_exception_handlers(application)
+    application.include_router(api_router)
+    return application
 
 
-app = FastAPI(
-    title=settings.app_name,
-    version="0.1.0",
-    debug=settings.debug,
-    lifespan=lifespan,
-)
-register_exception_handlers(app)
-
-
-@app.get("/health", response_model=HealthResponse, tags=["system"])
-async def health_check() -> HealthResponse:
-    """Return a lightweight readiness response."""
-
-    return HealthResponse(status="ok")
+app = create_app()

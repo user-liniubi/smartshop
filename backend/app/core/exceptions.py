@@ -10,6 +10,25 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 logger = logging.getLogger(__name__)
 
 
+class AppError(Exception):
+    """Expected application error that can be safely returned to an API client."""
+
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        details: Any | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+        self.details = details
+        self.headers = headers
+
+
 def error_payload(
     code: str,
     message: str,
@@ -21,6 +40,17 @@ def error_payload(
     if details is not None:
         error["details"] = details
     return {"error": error}
+
+
+async def app_exception_handler(
+    request: Request,
+    exc: AppError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=jsonable_encoder(error_payload(exc.code, exc.message, exc.details)),
+        headers=exc.headers,
+    )
 
 
 async def http_exception_handler(
@@ -68,6 +98,7 @@ async def unhandled_exception_handler(
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach consistent JSON error handlers to the application."""
 
+    app.add_exception_handler(AppError, app_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

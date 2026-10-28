@@ -1,6 +1,6 @@
 # SmartShop AI
 
-SmartShop AI 是一个面向 AI 应用开发求职的智能电商项目。当前完成第一阶段 Day 1 / P0：可运行的 FastAPI 后端骨架、环境配置、基础日志、统一错误响应和健康检查测试。
+SmartShop AI 是一个面向 AI 应用开发求职的智能电商项目。当前完成第一阶段 Day 2：可运行的 FastAPI 后端骨架、分层目录、环境配置、基础日志、统一错误响应和接口测试。
 
 ## 环境要求
 
@@ -43,6 +43,19 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 {"status":"ok"}
 ```
 
+## 配置
+
+运行配置来自环境变量或本地 `.env`。可用字段如下：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `APP_NAME` | `SmartShop AI` | 应用显示名称，不能为空 |
+| `APP_ENV` | `development` | `development`、`test` 或 `production` |
+| `DEBUG` | `false` | 是否开启 FastAPI 调试模式 |
+| `LOG_LEVEL` | `INFO` | `DEBUG`、`INFO`、`WARNING`、`ERROR` 或 `CRITICAL` |
+
+环境名称和日志级别会自动规范化大小写；非法值会在应用启动前导致配置校验失败。
+
 ## 测试与检查
 
 ```powershell
@@ -51,17 +64,32 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-异常路径可手动访问不存在的接口，例如 <http://127.0.0.1:8000/not-found>。服务会返回统一结构的 `404` JSON。
+统一错误响应结构：
+
+```json
+{
+  "error": {
+    "code": "http_404",
+    "message": "Not Found"
+  }
+}
+```
+
+参数校验失败返回 `validation_error`，未处理异常统一返回 `internal_server_error`，且不会把内部异常详情暴露给客户端。
 
 ## 当前目录
 
 ```text
 backend/app/
+├── api/             # HTTP 路由与依赖组装
 ├── core/            # 配置、日志与统一异常处理
-├── schemas/         # 接口响应模型
-└── main.py          # FastAPI 入口
+├── models/          # 后续阶段的数据模型
+├── repositories/    # 后续阶段的数据访问
+├── schemas/         # 接口请求与响应模型
+├── services/        # 业务服务
+└── main.py          # 应用工厂与 FastAPI 入口
 tests/               # 接口测试
 docs/                # 每日复盘
 ```
 
-商品、数据库、RAG、Agent 与前端将在后续开发日按手册逐步实现。
+请求从 `api` 层进入，经 `services` 层处理，并由 `schemas` 层约束输入输出。数据库模型和仓储将在 Day 3 之后接入；RAG、Agent 与前端仍按手册逐步实现。
