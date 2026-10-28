@@ -20,6 +20,11 @@ class Settings(BaseSettings):
         min_length=1,
     )
     database_echo: bool = False
+    auth_secret: str = Field(
+        default="dev-only-change-this-secret-32chars",
+        min_length=32,
+    )
+    auth_token_expire_minutes: int = Field(default=60, ge=1, le=1440)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -46,6 +51,8 @@ class Settings(BaseSettings):
     def validate_production_configuration(self) -> "Settings":
         if self.app_env == "production" and "replace_me" in self.database_url:
             raise ValueError("生产环境必须配置真实的 DATABASE_URL")
+        if self.app_env == "production" and self.auth_secret.startswith("dev-only"):
+            raise ValueError("生产环境必须替换 AUTH_SECRET")
         return self
 
 

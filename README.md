@@ -99,6 +99,27 @@ uv run python -m sample_data.seed
 - `chat_messages`：对话消息
 - `handoffs`：人工接管记录
 
+## 登录与订单接口
+
+登录并获取 Bearer Token：
+
+```powershell
+$login = Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8000/auth/login `
+  -ContentType "application/json" `
+  -Body '{"username":"consumer_demo","password":"Demo123!"}'
+```
+
+查询本人订单：
+
+```powershell
+$headers = @{ Authorization = "Bearer $($login.access_token)" }
+Invoke-RestMethod -Uri http://127.0.0.1:8000/orders/1 -Headers $headers
+```
+
+订单查询同时按订单 ID 和认证用户 ID 过滤。其他消费者访问 `consumer_demo` 的订单时返回 `404 order_not_found`，不泄露订单是否存在。Token 具有签名和过期时间，用户被删除或角色变化后，旧 Token 也会失效。
+
 ## 测试与检查
 
 ```powershell

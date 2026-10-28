@@ -1,12 +1,23 @@
 import base64
 import hashlib
 import hmac
+import json
 import secrets
+import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 SCRYPT_N = 2**14
 SCRYPT_R = 8
 SCRYPT_P = 1
 SCRYPT_DKLEN = 32
+
+
+@dataclass(frozen=True)
+class AccessTokenClaims:
+    user_id: int
+    role: str
+    expires_at: int
 
 
 def _encode(value: bytes) -> str:
@@ -55,3 +66,61 @@ def verify_password(password: str, encoded_hash: str) -> bool:
         return False
 
     return hmac.compare_digest(digest, _decode(expected_digest))
+
+
+def create_access_token(
+    *,
+    user_id: int,
+    role: str,
+    secret: str,
+    expires_minutes: int,
+    now: datetime | None = None,
+) -> str:
+    """Create a compact signed bearer token."""
+
+    current_time = now or datetime.now(UTC)
+    payload = {
+        "sub": user_id,
+        "role": role,
+        "exp": int(current_time.timestamp()) + expires_minutes * 60,
+    }
+    encoded_payload = _encode(
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    )
+    signature = hmac.new(
+        secret.encode("utf-8"),
+        encoded_payload.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    return f"{encoded_payload}.{_encode(signature)}"
+
+
+def decode_access_token(token: str, secret: str) -> AccessTokenClaims:
+    """Validate token integrity and expiry, raising ValueError on failure."""
+
+    try:
+        encoded_payload, encoded_signature = token.split(".", maxsplit=1)
+        expected_signature = hmac.new(
+            secret.encode("utf-8"),
+            encoded_payload.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+        provided_signature = _decode(encoded_signature)
+        if not hmac.compare_digest(provided_signature, expected_signature):
+            raise ValueError("invalid signature")
+
+        payload = json.loads(_decode(encoded_payload))
+        user_id = payload["sub"]
+        role = payload["role"]
+        expires_at = payload["exp"]
+        if (
+            not isinstance(user_id, int)
+            or not isinstance(role, str)
+            or not isinstance(expires_at, int)
+            or expires_at <= int(time.time())
+        ):
+            raise ValueError("invalid payload")
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise ValueError("invalid access token") from None
+
+    return AccessTokenClaims(user_id=user_id, role=role, expires_at=expires_at)
