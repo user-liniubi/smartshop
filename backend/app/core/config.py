@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "test", "production"]
@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     app_env: Environment = "development"
     debug: bool = False
     log_level: LogLevel = "INFO"
+    database_url: str = Field(
+        default="mysql+pymysql://smartshop:replace_me@127.0.0.1:3306/smartshop",
+        min_length=1,
+    )
+    database_echo: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -36,6 +41,12 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return value.strip().upper()
         return value
+
+    @model_validator(mode="after")
+    def validate_production_configuration(self) -> "Settings":
+        if self.app_env == "production" and "replace_me" in self.database_url:
+            raise ValueError("生产环境必须配置真实的 DATABASE_URL")
+        return self
 
 
 @lru_cache

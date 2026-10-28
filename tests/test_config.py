@@ -9,6 +9,11 @@ def test_settings_load_from_environment(monkeypatch):
     monkeypatch.setenv("APP_ENV", "TEST")
     monkeypatch.setenv("DEBUG", "true")
     monkeypatch.setenv("LOG_LEVEL", "debug")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "mysql+pymysql://smartshop:test_password@127.0.0.1:3308/smartshop",
+    )
+    monkeypatch.setenv("DATABASE_ECHO", "true")
 
     settings = Settings(_env_file=None)
 
@@ -16,6 +21,8 @@ def test_settings_load_from_environment(monkeypatch):
     assert settings.app_env == "test"
     assert settings.debug is True
     assert settings.log_level == "DEBUG"
+    assert settings.database_url.endswith("/smartshop")
+    assert settings.database_echo is True
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,6 @@
 # SmartShop AI
 
-SmartShop AI 是一个面向 AI 应用开发求职的智能电商项目。当前完成第一阶段 Day 2：可运行的 FastAPI 后端骨架、分层目录、环境配置、基础日志、统一错误响应和接口测试。
+SmartShop AI 是一个面向 AI 应用开发求职的智能电商项目。当前完成第一阶段第一周基础工程：FastAPI 后端、MySQL 连接与迁移、核心数据表和订单权限。
 
 ## 环境要求
 
@@ -53,8 +53,24 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | `APP_ENV` | `development` | `development`、`test` 或 `production` |
 | `DEBUG` | `false` | 是否开启 FastAPI 调试模式 |
 | `LOG_LEVEL` | `INFO` | `DEBUG`、`INFO`、`WARNING`、`ERROR` 或 `CRITICAL` |
+| `DATABASE_URL` | - | SQLAlchemy 数据库连接地址 |
+| `DATABASE_ECHO` | `false` | 是否输出 SQL 调试日志 |
 
 环境名称和日志级别会自动规范化大小写；非法值会在应用启动前导致配置校验失败。
+
+## 数据库迁移
+
+```powershell
+uv run alembic upgrade head
+```
+
+当前开发环境使用独立 MySQL 8 容器，默认映射到本机 `3308` 端口。迁移通过 `.env` 中的 `DATABASE_URL` 读取连接信息。
+
+查看当前迁移版本：
+
+```powershell
+uv run alembic current
+```
 
 ## 测试与检查
 
