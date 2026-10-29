@@ -32,3 +32,9 @@ class HandoffStatus(StrEnum):
     PENDING = "pending"
     CLAIMED = "claimed"
     CLOSED = "closed"
+
+
+class KnowledgeDocumentStatus(StrEnum):
+    PROCESSING = "processing"
+    INDEXED = "indexed"
+    FAILED = "failed"

@@ -1,6 +1,6 @@
 [project]
 name = "smartshop-ai"
-version = "0.5.0"
+version = "0.10.0"
 description = "SmartShop AI backend service"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -8,8 +8,13 @@ dependencies = [
     "alembic>=1.14,<2",
     "cryptography>=43,<47",
     "fastapi>=0.115,<1",
+    "chromadb>=1.0,<2",
+    "openai>=1.60,<3",
     "pydantic-settings>=2.7,<3",
+    "pymupdf>=1.25,<2",
     "pymysql>=1.1,<2",
+    "python-multipart>=0.0.20,<1",
+    "sentence-transformers>=3.3,<6",
     "sqlalchemy>=2.0,<2.1",
     "uvicorn[standard]>=0.34,<1",
 ]

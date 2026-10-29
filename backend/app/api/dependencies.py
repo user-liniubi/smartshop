@@ -46,3 +46,16 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_agent_user(current_user: CurrentUser) -> User:
+    if current_user.role != "agent":
+        raise AppError(
+            status_code=403,
+            code="agent_role_required",
+            message="该操作仅限客服账号",
+        )
+    return current_user
+
+
+AgentUser = Annotated[User, Depends(get_agent_user)]

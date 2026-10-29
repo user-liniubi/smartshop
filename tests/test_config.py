@@ -16,6 +16,9 @@ def test_settings_load_from_environment(monkeypatch):
     monkeypatch.setenv("DATABASE_ECHO", "true")
     monkeypatch.setenv("AUTH_SECRET", "test-secret-with-at-least-32-characters")
     monkeypatch.setenv("AUTH_TOKEN_EXPIRE_MINUTES", "15")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    monkeypatch.setenv("RAG_CHUNK_SIZE", "300")
+    monkeypatch.setenv("RAG_CHUNK_OVERLAP", "30")
 
     settings = Settings(_env_file=None)
 
@@ -27,6 +30,10 @@ def test_settings_load_from_environment(monkeypatch):
     assert settings.database_echo is True
     assert settings.auth_secret == "test-secret-with-at-least-32-characters"
     assert settings.auth_token_expire_minutes == 15
+    assert settings.deepseek_api_key is not None
+    assert settings.deepseek_api_key.get_secret_value() == "test-deepseek-key"
+    assert settings.rag_chunk_size == 300
+    assert settings.rag_chunk_overlap == 30
 
 
 @pytest.mark.parametrize(
@@ -35,6 +42,7 @@ def test_settings_load_from_environment(monkeypatch):
         ("APP_ENV", "staging"),
         ("LOG_LEVEL", "verbose"),
         ("APP_NAME", ""),
+        ("RAG_CHUNK_OVERLAP", "500"),
     ],
 )
 def test_invalid_settings_are_rejected(monkeypatch, field, value):

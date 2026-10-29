@@ -1,6 +1,6 @@
 # SmartShop AI
 
-SmartShop AI 是一个面向 AI 应用开发求职的智能电商项目。当前完成第一阶段第一周基础工程：FastAPI 后端、MySQL 连接与迁移、核心数据表和订单权限。
+SmartShop AI 是一个面向 AI 应用开发求职的智能电商项目。当前完成第一阶段第二周：会话持久化、DeepSeek 客户端、售后知识文档、BGE + Chroma 检索和带来源引用的 RAG 接口。
 
 ## 环境要求
 
@@ -55,8 +55,22 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | `LOG_LEVEL` | `INFO` | `DEBUG`、`INFO`、`WARNING`、`ERROR` 或 `CRITICAL` |
 | `DATABASE_URL` | - | SQLAlchemy 数据库连接地址 |
 | `DATABASE_ECHO` | `false` | 是否输出 SQL 调试日志 |
+| `DEEPSEEK_API_KEY` | - | DeepSeek API Key，仅保存在本地 `.env` |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | DeepSeek 对话模型 |
+| `CHROMA_PATH` | `./data/chroma` | Chroma 持久化目录 |
+| `EMBEDDING_MODEL` | `BAAI/bge-small-zh-v1.5` | 中文嵌入模型 |
+| `RAG_TOP_K` | `4` | 默认检索数量 |
+| `RAG_MIN_SIMILARITY` | `0.5` | 无依据拒答的相似度阈值 |
 
 环境名称和日志级别会自动规范化大小写；非法值会在应用启动前导致配置校验失败。
+
+DeepSeek Key 需要写入本地 `.env`：
+
+```dotenv
+DEEPSEEK_API_KEY=your_deepseek_api_key
+```
+
+不要提交 `.env`，也不要将 Key 写入源码或 README。
 
 ## 数据库迁移
 
@@ -98,6 +112,8 @@ uv run python -m sample_data.seed
 - `chat_sessions`：会话状态与槽位
 - `chat_messages`：对话消息
 - `handoffs`：人工接管记录
+- `documents`：知识文件与索引状态
+- `document_chunks`：Chunk 文本、页码、标题和向量 ID 映射
 
 ## 登录与订单接口
 
@@ -119,6 +135,50 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/orders/1 -Headers $headers
 ```
 
 订单查询同时按订单 ID 和认证用户 ID 过滤。其他消费者访问 `consumer_demo` 的订单时返回 `404 order_not_found`，不泄露订单是否存在。Token 具有签名和过期时间，用户被删除或角色变化后，旧 Token 也会失效。
+
+## 知识库与 RAG
+
+首次使用 BGE 模型时会下载约一百多 MB 的权重。当前开发环境已缓存，后续可设置：
+
+```dotenv
+EMBEDDING_LOCAL_FILES_ONLY=true
+```
+
+导入演示知识文档：
+
+```powershell
+uv run python -m scripts.ingest_demo_docs
+```
+
+知识文件位于 `data/docs/`，包含退换货政策、质保规则、配送 FAQ、五个商品说明和一份 PDF 售后 FAQ。脚本可重复运行，重复文档会通过 SHA-256 去重。
+
+客服可以使用 `POST /knowledge/upload` 上传 Markdown、TXT 或 PDF，也可以通过 `GET /knowledge/documents` 查看已索引文档。上传与首次模型加载为同步操作，后续阶段再改为 Redis/Celery 异步任务。
+
+RAG 问答需要使用消费者或客服 Bearer Token：
+
+```http
+POST /api/v1/rag/ask
+```
+
+```json
+{
+  "question": "降噪耳机保修多久？",
+  "product_id": 1,
+  "top_k": 4
+}
+```
+
+响应包含 `answer`、`grounded`、`citations` 和 `model`。没有达到相似度阈值时直接拒答，不调用模型；有证据时 DeepSeek 只依据检索片段回答并标注来源。
+
+## 会话接口
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| POST | `/chat/sessions` | 创建当前用户的会话 |
+| POST | `/chat/sessions/{id}/messages` | 保存用户问题，执行 RAG 并保存 AI 回复 |
+| GET | `/chat/sessions/{id}/messages` | 读取本人会话历史 |
+
+会话和消息保存到 MySQL，后端重启后不会丢失。其他消费者读取会话时返回 404。
 
 ## 测试与检查
 
@@ -147,13 +207,18 @@ uv run ruff format --check .
 backend/app/
 ├── api/             # HTTP 路由与依赖组装
 ├── core/            # 配置、日志与统一异常处理
-├── models/          # 后续阶段的数据模型
-├── repositories/    # 后续阶段的数据访问
+├── db/              # SQLAlchemy Engine 与 Session
+├── models/          # 用户、订单、会话和知识库模型
+├── rag/             # 文档解析、分块、BGE 和 Chroma
+├── repositories/    # 数据访问
 ├── schemas/         # 接口请求与响应模型
 ├── services/        # 业务服务
 └── main.py          # 应用工厂与 FastAPI 入口
+data/docs/           # 可提交的演示知识文件
+data/chroma/         # 本地向量索引，不提交
+scripts/             # 数据导入和 PDF 生成脚本
 tests/               # 接口测试
 docs/                # 每日复盘
 ```
 
-请求从 `api` 层进入，经 `services` 层处理，并由 `schemas` 层约束输入输出。数据库模型和仓储将在 Day 3 之后接入；RAG、Agent 与前端仍按手册逐步实现。
+请求从 `api` 层进入，经 `services` 层处理，并由 `schemas` 层约束输入输出。Agent Tool Calling、多轮状态机、人工客服前端和异步索引尚未实现。

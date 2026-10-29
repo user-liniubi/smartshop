@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.db.base import Base
 from backend.app.models.enums import (
     HandoffStatus,
+    KnowledgeDocumentStatus,
     OrderStatus,
     SenderType,
     SessionStatus,
@@ -154,6 +156,7 @@ class ChatMessage(Base):
         default=SenderType.CONSUMER.value,
     )
     content: Mapped[str] = mapped_column(Text)
+    citations_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -198,3 +201,65 @@ class Handoff(Base):
 
     session: Mapped[ChatSession] = relationship(back_populates="handoff")
     agent: Mapped[User | None] = relationship(back_populates="claimed_handoffs")
+
+
+class Document(Base):
+    __tablename__ = "documents"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('processing', 'indexed', 'failed')",
+            name="valid_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(String(255))
+    source_type: Mapped[str] = mapped_column(String(20))
+    sha256: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    version: Mapped[int] = mapped_column(default=1)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default=KnowledgeDocumentStatus.PROCESSING.value,
+    )
+    content_path: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    product: Mapped[Product | None] = relationship()
+    chunks: Mapped[list[DocumentChunk]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+    __table_args__ = (
+        UniqueConstraint("document_id", "chunk_index", name="uq_document_chunk_index"),
+        Index("ix_document_chunks_document_id_chunk_index", "document_id", "chunk_index"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"),
+    )
+    chunk_index: Mapped[int]
+    page: Mapped[int | None] = mapped_column(nullable=True)
+    heading: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content: Mapped[str] = mapped_column(Text)
+    text_hash: Mapped[str] = mapped_column(String(64), index=True)
+    vector_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    document: Mapped[Document] = relationship(back_populates="chunks")
