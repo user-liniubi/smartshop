@@ -18,20 +18,16 @@
 
 ## 实际验收
 
-本地目前没有配置 DeepSeek API Key。真实请求已完成 BGE 检索并进入模型调用边界，随后按设计返回：
+本地 `.env` 已配置 DeepSeek API Key，没有写入源码、日志或 Git。真实调用结果：
 
-```json
-{
-  "error": {
-    "code": "model_not_configured",
-    "message": "DeepSeek 服务尚未配置"
-  }
-}
+```text
+POST https://api.deepseek.com/chat/completions 200 OK
+model=deepseek-chat
+首次冷启动模型耗时：8.097 秒
+复用连接后的聊天调用耗时：1.047 秒
 ```
 
-这证明后端没有伪造模型回答。真实 DeepSeek 回答需要在本地 `.env` 配置 `DEEPSEEK_API_KEY` 后重启服务再验收。
-
-当前自动化测试共 37 项通过，其中包含 DeepSeek 兼容客户端请求构造和失败映射测试。
+首次耗时包含 BGE 模型冷加载，不代表 DeepSeek 单次调用延迟。当前自动化测试共 37 项通过，其中包含 DeepSeek 兼容客户端请求构造和失败映射测试。
 
 ## 设计取舍
 
@@ -43,7 +39,7 @@
 - [x] 已开发
 - [x] 已测试
 - [x] 已提交 Git
-- [ ] 真实 DeepSeek 调用（缺少本地 API Key）
+- [x] 真实 DeepSeek 调用
 
 提交信息：`feat: add persistent chat and RAG knowledge pipeline`  
 提交哈希：`f150a03`

@@ -26,9 +26,18 @@
 - 未登录请求返回 401
 - 有相关证据但未配置 DeepSeek Key 时返回 503，不编造答案
 
-## 仍待外部验收
+## 真实模型验收
 
-当前没有 DeepSeek API Key，因此“真实模型基于检索证据生成最终回答”尚未执行。配置 Key 后需要重新运行耳机质保问题，核对答案和来源。
+使用本地配置的 DeepSeek Key 实际调用成功：
+
+```text
+问题：降噪耳机保修多久？
+回答：降噪耳机质保期为十二个月。[1][2]
+来源：warranty_policy.md、headphones_manual.md
+HTTP：200
+```
+
+通过聊天接口再次询问后，AI 回答“降噪耳机提供 12 个月质保。[1][2]”，4 条引用元数据写入 MySQL。
 
 ## 第十天验收
 
@@ -36,7 +45,7 @@
 - [x] 已开发
 - [x] 已测试
 - [x] 已提交 Git
-- [ ] 真实 DeepSeek 回答（缺少本地 API Key）
+- [x] 真实 DeepSeek 回答
 - [x] 检索、引用结构、无依据拒答通过
 
 提交信息：`feat: add persistent chat and RAG knowledge pipeline`  
