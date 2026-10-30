@@ -38,6 +38,19 @@ def test_consumer_can_read_own_order(seeded_client, test_database):
     assert body["product"]["name"] == "SmartShop 降噪耳机 Pro"
 
 
+def test_consumer_can_read_own_order_by_business_number(seeded_client):
+    response = seeded_client.get(
+        "/orders/by-number/A10086",
+        headers=login_headers(seeded_client),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["order_no"] == "A10086"
+    assert body["status"] == "delivered"
+    assert body["product"]["name"] == "SmartShop 降噪耳机 Pro"
+
+
 def test_consumer_cannot_read_another_users_order(seeded_client, test_database):
     other_user_order_id = get_order_id(test_database, "A10088")
     response = seeded_client.get(
@@ -52,6 +65,41 @@ def test_consumer_cannot_read_another_users_order(seeded_client, test_database):
             "message": "订单不存在",
         }
     }
+
+
+def test_consumer_cannot_read_another_users_order_by_business_number(seeded_client):
+    response = seeded_client.get(
+        "/orders/by-number/A10088",
+        headers=login_headers(seeded_client, "consumer_demo"),
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "order_not_found",
+            "message": "订单不存在",
+        }
+    }
+
+
+def test_unknown_business_order_number_returns_not_found(seeded_client):
+    response = seeded_client.get(
+        "/orders/by-number/A99999",
+        headers=login_headers(seeded_client),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "order_not_found"
+
+
+def test_business_order_number_rejects_invalid_format(seeded_client):
+    response = seeded_client.get(
+        "/orders/by-number/A1",
+        headers=login_headers(seeded_client),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_order_query_requires_valid_token(seeded_client, test_database):

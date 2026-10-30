@@ -19,3 +19,22 @@ def get_order_owned_by_user(
         )
     )
     return session.scalar(statement)
+
+
+def get_order_owned_by_user_and_no(
+    session: Session,
+    *,
+    order_no: str,
+    user_id: int,
+) -> Order | None:
+    """Return an order by business number only when the user owns it."""
+
+    statement = (
+        select(Order)
+        .options(selectinload(Order.product))
+        .where(
+            Order.order_no == order_no,
+            Order.user_id == user_id,
+        )
+    )
+    return session.scalar(statement)

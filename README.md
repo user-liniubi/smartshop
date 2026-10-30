@@ -1,6 +1,8 @@
 # SmartShop AI
 
-SmartShop AI 是一个面向 AI 应用开发求职的智能电商项目。当前完成第一阶段第二周：会话持久化、DeepSeek 客户端、售后知识文档、BGE + Chroma 检索和带来源引用的 RAG 接口。
+SmartShop AI 是一个单商家、售后阶段的电商智能客服项目。项目从消费者已经拥有订单之后开始，处理售后政策咨询、订单查询和后续人工接管，不模拟购物车、下单、支付或物流流程。
+
+当前已完成 FastAPI 后端基础、MySQL 数据层、订单权限、会话持久化、DeepSeek 客户端、售后文档 RAG、来源引用和无依据拒答。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
 
 ## 环境要求
 
@@ -132,9 +134,10 @@ $login = Invoke-RestMethod `
 ```powershell
 $headers = @{ Authorization = "Bearer $($login.access_token)" }
 Invoke-RestMethod -Uri http://127.0.0.1:8000/orders/1 -Headers $headers
+Invoke-RestMethod -Uri http://127.0.0.1:8000/orders/by-number/A10086 -Headers $headers
 ```
 
-订单查询同时按订单 ID 和认证用户 ID 过滤。其他消费者访问 `consumer_demo` 的订单时返回 `404 order_not_found`，不泄露订单是否存在。Token 具有签名和过期时间，用户被删除或角色变化后，旧 Token 也会失效。
+订单查询支持内部订单 ID 和业务订单号两种入口，并且都会与认证用户 ID 联合过滤。其他消费者访问 `consumer_demo` 的订单时返回 `404 order_not_found`，不泄露订单是否存在。Token 具有签名和过期时间，用户被删除或角色变化后，旧 Token 也会失效。
 
 ## 知识库与 RAG
 
@@ -221,4 +224,4 @@ tests/               # 接口测试
 docs/                # 每日复盘
 ```
 
-请求从 `api` 层进入，经 `services` 层处理，并由 `schemas` 层约束输入输出。Agent Tool Calling、多轮状态机、人工客服前端和异步索引尚未实现。
+请求从 `api` 层进入，经 `services` 层处理，并由 `schemas` 层约束输入输出。当前订单查询已支持业务订单号，为后续 Agent 工具调用提供受控查询入口；Agent Tool Calling、多轮状态机、人工客服前端和异步索引尚未实现。
