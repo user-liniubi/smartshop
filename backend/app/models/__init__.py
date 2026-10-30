@@ -9,6 +9,7 @@ from backend.app.models.entities import (
     Handoff,
     Order,
     Product,
+    ToolInvocation,
     User,
 )
 from backend.app.models.enums import (
@@ -17,7 +18,9 @@ from backend.app.models.enums import (
     OrderStatus,
     SenderType,
     SessionStatus,
+    ToolInvocationStatus,
     UserRole,
+    WorkflowState,
 )
 
 __all__ = [
@@ -34,6 +37,9 @@ __all__ = [
     "Product",
     "SenderType",
     "SessionStatus",
+    "ToolInvocation",
+    "ToolInvocationStatus",
     "User",
     "UserRole",
+    "WorkflowState",
 ]

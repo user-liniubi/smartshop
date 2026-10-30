@@ -23,7 +23,9 @@ from backend.app.models.enums import (
     OrderStatus,
     SenderType,
     SessionStatus,
+    ToolInvocationStatus,
     UserRole,
+    WorkflowState,
 )
 
 
@@ -102,6 +104,12 @@ class ChatSession(Base):
             "status IN ('open', 'need_human', 'human_active', 'closed')",
             name="valid_status",
         ),
+        CheckConstraint(
+            "workflow_state IN "
+            "('collecting_info', 'checking_order', 'checking_policy', "
+            "'answer_ready', 'need_human', 'resolved')",
+            name="valid_workflow_state",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -115,6 +123,11 @@ class ChatSession(Base):
     )
     intent: Mapped[str | None] = mapped_column(String(50), nullable=True)
     slots_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    workflow_state: Mapped[str] = mapped_column(
+        String(32),
+        default=WorkflowState.COLLECTING_INFO.value,
+        server_default=WorkflowState.COLLECTING_INFO.value,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -133,6 +146,10 @@ class ChatSession(Base):
     handoff: Mapped[Handoff | None] = relationship(
         back_populates="session",
         uselist=False,
+        cascade="all, delete-orphan",
+    )
+    tool_invocations: Mapped[list[ToolInvocation]] = relationship(
+        back_populates="session",
         cascade="all, delete-orphan",
     )
 
@@ -201,6 +218,37 @@ class Handoff(Base):
 
     session: Mapped[ChatSession] = relationship(back_populates="handoff")
     agent: Mapped[User | None] = relationship(back_populates="claimed_handoffs")
+
+
+class ToolInvocation(Base):
+    __tablename__ = "tool_invocations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('success', 'error', 'blocked')",
+            name="valid_status",
+        ),
+        Index("ix_tool_invocations_session_id_created_at", "session_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"),
+    )
+    tool_name: Mapped[str] = mapped_column(String(64))
+    arguments_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default=ToolInvocationStatus.SUCCESS.value,
+    )
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    session: Mapped[ChatSession] = relationship(back_populates="tool_invocations")
 
 
 class Document(Base):
