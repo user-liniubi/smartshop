@@ -6,14 +6,20 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
-from backend.app.agent.schemas import GetMyOrderArguments, ToolExecutionResult
+from backend.app.agent.schemas import (
+    GetMyOrderArguments,
+    SearchAfterSalesPolicyArguments,
+    ToolExecutionResult,
+)
 from backend.app.core.exceptions import AppError
 from backend.app.models import ToolInvocationStatus
 from backend.app.repositories.chat import get_session_owned_by_user
 from backend.app.repositories.tool_invocations import add_tool_invocation
 from backend.app.services.orders import OrderService
+from backend.app.services.rag import RAGService
 
 GET_MY_ORDER = "get_my_order"
+SEARCH_AFTER_SALES_POLICY = "search_after_sales_policy"
 
 
 @dataclass(frozen=True)
@@ -23,6 +29,7 @@ class ToolContext:
     session: Session
     session_id: int
     user_id: int
+    rag_service: RAGService | None = None
 
 
 @dataclass(frozen=True)
@@ -41,8 +48,28 @@ class ToolRegistry:
                 description="查询当前登录消费者本人的订单，不接受调用方指定用户身份。",
                 arguments_model=GetMyOrderArguments,
                 handler=self._get_my_order,
-            )
+            ),
+            SEARCH_AFTER_SALES_POLICY: ToolDefinition(
+                description="检索当前商家的退换货、保修、配送和商品说明政策。",
+                arguments_model=SearchAfterSalesPolicyArguments,
+                handler=self._search_after_sales_policy,
+            ),
         }
+
+    def model_schemas(self) -> list[dict[str, Any]]:
+        """Return allowlisted OpenAI-compatible tool schemas."""
+
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": definition.description,
+                    "parameters": definition.arguments_model.model_json_schema(),
+                },
+            }
+            for name, definition in self._definitions.items()
+        ]
 
     def execute(
         self,
@@ -156,6 +183,30 @@ class ToolRegistry:
             "status": order.status,
             "product_id": order.product.id,
             "product_name": order.product.name,
+        }
+
+    def _search_after_sales_policy(
+        self,
+        context: ToolContext,
+        raw_arguments: BaseModel,
+    ) -> dict[str, Any]:
+        if not isinstance(raw_arguments, SearchAfterSalesPolicyArguments):
+            raise TypeError("Unexpected arguments model")
+        if context.rag_service is None:
+            raise AppError(
+                status_code=503,
+                code="rag_service_unavailable",
+                message="售后政策检索服务不可用",
+            )
+
+        rag_context = context.rag_service.retrieve_sync(
+            question=raw_arguments.query,
+            product_id=raw_arguments.product_id,
+        )
+        return {
+            "grounded": rag_context.grounded,
+            "evidence": rag_context.evidence,
+            "citations": [citation.model_dump(mode="json") for citation in rag_context.citations],
         }
 
     @staticmethod

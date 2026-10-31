@@ -13,6 +13,7 @@ from backend.app.models.entities import (
     User,
 )
 from backend.app.models.enums import (
+    HandoffSource,
     HandoffStatus,
     KnowledgeDocumentStatus,
     OrderStatus,
@@ -31,6 +32,7 @@ __all__ = [
     "DocumentChunk",
     "Handoff",
     "HandoffStatus",
+    "HandoffSource",
     "KnowledgeDocumentStatus",
     "Order",
     "OrderStatus",

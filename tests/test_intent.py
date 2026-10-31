@@ -82,6 +82,23 @@ def test_intent_service_uses_deterministic_order_number_when_model_omits_it():
     assert result.slots.order_no == "A10087"
 
 
+def test_existing_return_type_survives_order_number_follow_up():
+    client = FakeIntentClient(
+        '{"intent":"order_query","slots":{"order_no":"A10086",'
+        '"issue_type":"order_query"},"confidence":0.78}'
+    )
+
+    result = asyncio.run(
+        IntentService(client).extract(
+            content="订单号 A10086",
+            existing_slots={"issue_type": "return"},
+        )
+    )
+
+    assert result.intent == AfterSalesIntent.ORDER_QUERY
+    assert result.slots.issue_type == IssueType.RETURN
+
+
 def test_invalid_model_json_becomes_unknown_without_crashing():
     client = FakeIntentClient("这不是 JSON")
 
@@ -102,6 +119,29 @@ def test_intent_service_accepts_json_inside_markdown_fence():
     result = asyncio.run(IntentService(client).extract(content="我要人工"))
 
     assert result.intent == AfterSalesIntent.HUMAN_REQUEST
+
+
+def test_generic_issue_description_is_cleared_for_follow_up():
+    client = FakeIntentClient(
+        '{"intent":"return_request","slots":{"issue_type":"return",'
+        '"issue_description":"耳机坏了"},"confidence":0.9}'
+    )
+
+    result = asyncio.run(IntentService(client).extract(content="耳机坏了，想退货"))
+
+    assert result.intent == AfterSalesIntent.RETURN_REQUEST
+    assert result.slots.issue_description is None
+
+
+def test_return_phrase_without_symptom_is_not_a_specific_issue():
+    client = FakeIntentClient(
+        '{"intent":"return_request","slots":{"issue_type":"return",'
+        '"issue_description":"耳机坏了，想退货"},"confidence":0.9}'
+    )
+
+    result = asyncio.run(IntentService(client).extract(content="耳机坏了，想退货"))
+
+    assert result.slots.issue_description is None
 
 
 def test_order_number_extraction_supports_labeled_and_bare_values():

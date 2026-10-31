@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base
 from backend.app.models.enums import (
+    HandoffSource,
     HandoffStatus,
     KnowledgeDocumentStatus,
     OrderStatus,
@@ -189,6 +190,10 @@ class Handoff(Base):
             "status IN ('pending', 'claimed', 'closed')",
             name="valid_status",
         ),
+        CheckConstraint(
+            "source IN ('user', 'ai', 'rule')",
+            name="valid_source",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -206,6 +211,19 @@ class Handoff(Base):
         index=True,
     )
     reason: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(
+        String(20),
+        default=HandoffSource.USER.value,
+        server_default=HandoffSource.USER.value,
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

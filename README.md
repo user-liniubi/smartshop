@@ -2,7 +2,7 @@
 
 SmartShop AI 是一个单商家、售后阶段的电商智能客服项目。项目从消费者已经拥有订单之后开始，处理售后政策咨询、订单查询和后续人工接管，不模拟购物车、下单、支付或物流流程。
 
-当前已完成 FastAPI 后端基础、MySQL 数据层、订单权限、会话持久化、DeepSeek 客户端、售后文档 RAG、来源引用和无依据拒答。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
+当前已完成 FastAPI 后端基础、MySQL 数据层、订单权限、会话持久化、DeepSeek Tool Calling、受控本人订单查询、售后文档 RAG、多轮槽位补齐、订单事实与政策组合，以及人工申请/待接管队列。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
 
 ## 环境要求
 
@@ -63,6 +63,8 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | `EMBEDDING_MODEL` | `BAAI/bge-small-zh-v1.5` | 中文嵌入模型 |
 | `RAG_TOP_K` | `4` | 默认检索数量 |
 | `RAG_MIN_SIMILARITY` | `0.5` | 无依据拒答的相似度阈值 |
+| `AGENT_MAX_TOOL_ROUNDS` | `2` | Agent 最大工具轮数 |
+| `AGENT_TOTAL_TIMEOUT_SECONDS` | `60` | 单次 Agent 处理总超时 |
 
 环境名称和日志级别会自动规范化大小写；非法值会在应用启动前导致配置校验失败。
 
@@ -139,11 +141,11 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/orders/by-number/A10086 -Headers $h
 
 订单查询支持内部订单 ID 和业务订单号两种入口，并且都会与认证用户 ID 联合过滤。其他消费者访问 `consumer_demo` 的订单时返回 `404 order_not_found`，不泄露订单是否存在。Token 具有签名和过期时间，用户被删除或角色变化后，旧 Token 也会失效。
 
-后端同时提供尚未接入聊天流程的受控订单工具 `get_my_order`。该工具只接受订单号参数，当前用户身份由服务端注入，并将脱敏后的调用参数、结果、状态和耗时写入 `tool_invocations` 审计表。工具未注册、参数非法或订单不属于当前用户时会被阻止，不执行任意 SQL。
+聊天主链已接入受控订单工具 `get_my_order`。模型只能选择白名单工具和业务参数，当前用户身份由服务端注入，调用参数、脱敏结果、状态和耗时写入 `tool_invocations`。订单不属于当前用户时统一返回“订单不存在”，不会泄露他人订单。
 
-意图与槽位服务也已具备独立实现：使用 DeepSeek JSON 输出提取售后意图、订单号、问题类型和问题描述，通过 Pydantic 严格校验；订单号同时使用确定性正则兜底，槽位合并不会用空值覆盖已有信息。该服务尚未接入聊天编排。
+意图与槽位使用 DeepSeek JSON 输出提取，并通过 Pydantic 校验；订单号同时使用确定性正则兜底。已有退货/换货任务在只补充订单号时不会被 `order_query` 覆盖，空值也不会清除已知槽位。
 
-售后编排器已建立后端权威工作流状态：根据意图和槽位完整性决定继续追问、查询订单、检索政策或进入人工处理；会话的意图、槽位和工作流状态会持久化到 MySQL。当前运行时路由尚未切换到新编排器。
+售后编排器负责后端权威工作流状态。订单事实只来自 MySQL，退换货和保修规则只来自 RAG；模型不得补写订单状态或承诺退款。无政策依据、订单状态异常、模型故障和人工请求会创建 pending handoff。
 
 ## 知识库与 RAG
 
@@ -184,10 +186,22 @@ POST /api/v1/rag/ask
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | POST | `/chat/sessions` | 创建当前用户的会话 |
-| POST | `/chat/sessions/{id}/messages` | 保存用户问题，执行 RAG 并保存 AI 回复 |
+| POST | `/chat/sessions/{id}/messages` | 执行意图、工具、RAG 和规则编排 |
 | GET | `/chat/sessions/{id}/messages` | 读取本人会话历史 |
+| POST | `/chat/sessions/{id}/handoff` | 幂等申请人工客服 |
+| GET | `/agent/handoffs` | 客服查看 pending 待接管队列 |
 
 会话和消息保存到 MySQL，后端重启后不会丢失。其他消费者读取会话时返回 404。
+
+聊天响应除消息外还包含：
+
+- `action`：`ask_more_info`、`answer`、`handoff_created` 或 `waiting_for_agent`
+- `workflow_state`
+- `missing_slots`
+- `tool_results`
+- `handoff`
+
+会话进入 `need_human` 后，新的消费者消息仍会保存，但 AI 不再自动生成回复。
 
 ## 测试与检查
 
@@ -195,6 +209,12 @@ POST /api/v1/rag/ask
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
+```
+
+使用真实 DeepSeek、BGE 和 Chroma 跑三轮售后冒烟流程：
+
+```powershell
+uv run python -m scripts.smoke_after_sales
 ```
 
 统一错误响应结构：
@@ -214,6 +234,7 @@ uv run ruff format --check .
 
 ```text
 backend/app/
+├── agent/           # 意图、工具白名单、售后编排
 ├── api/             # HTTP 路由与依赖组装
 ├── core/            # 配置、日志与统一异常处理
 ├── db/              # SQLAlchemy Engine 与 Session
@@ -230,4 +251,4 @@ tests/               # 接口测试
 docs/                # 周复盘与项目手册
 ```
 
-请求从 `api` 层进入，经 `services` 层处理，并由 `schemas` 层约束输入输出。当前已完成业务订单号查询、受控订单工具、工具调用审计、结构化意图和槽位提取，以及后端权威售后工作流状态；这些能力尚未接入运行时聊天路由，人工客服前端和异步索引仍按 V2 手册继续开发。
+请求从 `api` 层进入，经 `agent` 与 `services` 协调意图、工具、RAG、规则和状态持久化。下一阶段实现客服原子接管、人工回复/关闭和 Streamlit 双端；异步索引仍属于可选增强。

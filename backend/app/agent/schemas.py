@@ -38,7 +38,11 @@ class SlotUpdate(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     issue_type: IssueType | None = None
-    issue_description: str | None = Field(default=None, max_length=1000)
+    issue_description: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=1000,
+    )
 
     @field_validator("order_no", "issue_description", mode="before")
     @classmethod
@@ -88,6 +92,34 @@ class GetMyOrderArguments(BaseModel):
     )
 
 
+class SearchAfterSalesPolicyArguments(BaseModel):
+    """Arguments for the read-only after-sales policy search tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=2, max_length=500)
+    product_id: int | None = Field(default=None, gt=0)
+
+
 class ToolExecutionResult(BaseModel):
     tool_name: str
     result: dict[str, Any]
+
+
+class ToolCallPlan(BaseModel):
+    name: str
+    arguments: dict[str, Any]
+
+
+class ToolResultSummary(BaseModel):
+    tool_name: str
+    status: str
+    result: dict[str, Any]
+    error_code: str | None = None
+
+
+class ConversationAction(StrEnum):
+    ASK_MORE_INFO = "ask_more_info"
+    ANSWER = "answer"
+    HANDOFF_CREATED = "handoff_created"
+    WAITING_FOR_AGENT = "waiting_for_agent"

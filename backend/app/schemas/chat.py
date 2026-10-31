@@ -2,7 +2,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.app.agent.schemas import ConversationAction, ToolResultSummary
 from backend.app.models.enums import SenderType, SessionStatus, WorkflowState
+from backend.app.schemas.handoff import HandoffResponse
 
 
 class ChatSessionResponse(BaseModel):
@@ -33,4 +35,9 @@ class ChatMessageResponse(BaseModel):
 
 class ChatTurnResponse(BaseModel):
     user_message: ChatMessageResponse
-    assistant_message: ChatMessageResponse
+    assistant_message: ChatMessageResponse | None
+    action: ConversationAction = ConversationAction.ANSWER
+    workflow_state: WorkflowState = WorkflowState.COLLECTING_INFO
+    missing_slots: list[str] = Field(default_factory=list)
+    tool_results: list[ToolResultSummary] = Field(default_factory=list)
+    handoff: HandoffResponse | None = None

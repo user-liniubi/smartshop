@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 
 from backend.app.core.config import Settings
 from backend.app.rag.embeddings import BgeEmbeddingProvider
@@ -10,6 +11,14 @@ from backend.app.services.llm import DeepSeekClient
 
 NO_EVIDENCE_ANSWER = "当前知识库中没有足够依据确认这个问题，建议转人工客服进一步核实。"
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RAGContext:
+    evidence: str
+    citations: list[CitationResponse]
+    chunks: tuple[RetrievedChunk, ...]
+    grounded: bool
 
 
 class RAGService:
@@ -33,10 +42,55 @@ class RAGService:
         product_id: int | None = None,
         top_k: int | None = None,
     ) -> RagAskResponse:
+        context = await self.retrieve(
+            question=question,
+            product_id=product_id,
+            top_k=top_k,
+        )
+
+        if not context.grounded:
+            return RagAskResponse(
+                answer=NO_EVIDENCE_ANSWER,
+                grounded=False,
+                citations=[],
+                model=self.settings.deepseek_model,
+            )
+
+        answer = await self.llm.generate_answer(
+            question=question,
+            evidence=context.evidence,
+        )
+        return RagAskResponse(
+            answer=answer,
+            grounded=True,
+            citations=context.citations,
+            model=self.settings.deepseek_model,
+        )
+
+    async def retrieve(
+        self,
+        *,
+        question: str,
+        product_id: int | None = None,
+        top_k: int | None = None,
+    ) -> RAGContext:
+        return await asyncio.to_thread(
+            self.retrieve_sync,
+            question=question,
+            product_id=product_id,
+            top_k=top_k,
+        )
+
+    def retrieve_sync(
+        self,
+        *,
+        question: str,
+        product_id: int | None = None,
+        top_k: int | None = None,
+    ) -> RAGContext:
         started_at = time.perf_counter()
-        query_embedding = await asyncio.to_thread(self.embedder.embed_query, question)
-        retrieved = await asyncio.to_thread(
-            self.vector_store.query,
+        query_embedding = self.embedder.embed_query(question)
+        retrieved = self.vector_store.query(
             query_embedding,
             top_k=top_k or self.settings.rag_top_k,
             product_id=product_id,
@@ -51,26 +105,16 @@ class RAGService:
             chunk for chunk in retrieved if chunk.similarity >= self.settings.rag_min_similarity
         ]
         citations = [self._to_citation(chunk, index) for index, chunk in enumerate(relevant, 1)]
-
-        if not relevant:
-            return RagAskResponse(
-                answer=NO_EVIDENCE_ANSWER,
-                grounded=False,
-                citations=[],
-                model=self.settings.deepseek_model,
-            )
-
         evidence = "\n\n".join(
             f"[{index}] 来源：{chunk.title}，{chunk.filename}"
             f"{self._location(chunk)}\n{chunk.content}"
             for index, chunk in enumerate(relevant, start=1)
         )
-        answer = await self.llm.generate_answer(question=question, evidence=evidence)
-        return RagAskResponse(
-            answer=answer,
-            grounded=True,
+        return RAGContext(
+            evidence=evidence,
             citations=citations,
-            model=self.settings.deepseek_model,
+            chunks=tuple(relevant),
+            grounded=bool(relevant),
         )
 
     @staticmethod

@@ -1,26 +1,43 @@
-from backend.app.api.rag_dependencies import get_rag_service
+from datetime import UTC, datetime
+
+from backend.app.agent.schemas import ConversationAction
+from backend.app.api.agent_dependencies import get_after_sales_agent_service
 from backend.app.main import app
-from backend.app.schemas.rag import CitationResponse, RagAskResponse
+from backend.app.models.enums import SenderType, WorkflowState
+from backend.app.schemas.chat import ChatMessageResponse, ChatTurnResponse
 from sample_data.seed import DEMO_PASSWORD
 
 
-class FakeRagService:
-    async def ask(self, *, question: str, product_id=None, top_k=None):
-        return RagAskResponse(
-            answer="耳机质保十二个月。[1]",
-            grounded=True,
-            citations=[
-                CitationResponse(
-                    document_id=1,
-                    chunk_id="[1] 1:1",
-                    filename="warranty_policy.md",
-                    title="质保规则",
-                    heading="耳机",
-                    excerpt="降噪耳机提供十二个月质保。",
-                    similarity=0.92,
-                )
-            ],
-            model="deepseek-chat",
+class FakeAgentService:
+    async def handle_message(self, *, session_id: int, user_id: int, content: str):
+        created_at = datetime.now(UTC)
+        return ChatTurnResponse(
+            user_message=ChatMessageResponse(
+                id=1,
+                sender_type=SenderType.CONSUMER,
+                content=content,
+                citations_json=[],
+                created_at=created_at,
+            ),
+            assistant_message=ChatMessageResponse(
+                id=2,
+                sender_type=SenderType.ASSISTANT,
+                content="耳机质保十二个月。[1]",
+                citations_json=[
+                    {
+                        "document_id": 1,
+                        "chunk_id": "[1] 1:1",
+                        "filename": "warranty_policy.md",
+                        "title": "质保规则",
+                        "heading": "耳机",
+                        "excerpt": "降噪耳机提供十二个月质保。",
+                        "similarity": 0.92,
+                    }
+                ],
+                created_at=created_at,
+            ),
+            action=ConversationAction.ANSWER,
+            workflow_state=WorkflowState.RESOLVED,
         )
 
 
@@ -33,8 +50,8 @@ def _login_headers(client, username: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
-def test_chat_messages_are_persisted_with_citations(seeded_client):
-    app.dependency_overrides[get_rag_service] = lambda: FakeRagService()
+def test_chat_route_returns_agent_answer_with_citations(seeded_client):
+    app.dependency_overrides[get_after_sales_agent_service] = lambda: FakeAgentService()
     headers = _login_headers(seeded_client, "consumer_demo")
 
     created = seeded_client.post("/chat/sessions", headers=headers)
@@ -46,26 +63,15 @@ def test_chat_messages_are_persisted_with_citations(seeded_client):
         headers=headers,
         json={"content": "耳机保修多久？"},
     )
-    history = seeded_client.get(
-        f"/chat/sessions/{session_id}/messages",
-        headers=headers,
-    )
-
     assert sent.status_code == 200
     assert sent.json()["user_message"]["sender_type"] == "consumer"
     assert sent.json()["assistant_message"]["sender_type"] == "assistant"
     assert sent.json()["assistant_message"]["citations_json"][0]["filename"] == (
         "warranty_policy.md"
     )
-    assert history.status_code == 200
-    assert [message["sender_type"] for message in history.json()] == [
-        "consumer",
-        "assistant",
-    ]
 
 
 def test_consumer_cannot_read_another_users_chat(seeded_client):
-    app.dependency_overrides[get_rag_service] = lambda: FakeRagService()
     owner_headers = _login_headers(seeded_client, "consumer_demo")
     other_headers = _login_headers(seeded_client, "consumer_other")
 

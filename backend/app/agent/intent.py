@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from backend.app.agent.schemas import (
     AfterSalesIntent,
     IntentResult,
+    IssueType,
     SlotUpdate,
 )
 from backend.app.services.llm import DeepSeekClient
@@ -22,6 +23,10 @@ _LABELED_ORDER_NO = re.compile(
 )
 _BARE_ORDER_NO = re.compile(
     r"(?<![A-Za-z0-9_-])([A-Za-z]\d{5,31})(?![A-Za-z0-9_-])",
+)
+_GENERIC_ISSUE_DESCRIPTION_PATTERN = re.compile(
+    r"^(?:我的)?(?:耳机)?(?:坏了|有问题|不能用了)"
+    r"(?:\s*[，,。]?\s*(?:想|要)?(?:退货|换货|退款))?[。！!]?$"
 )
 
 
@@ -56,6 +61,13 @@ def merge_slots(
     for field_name in SlotUpdate.model_fields:
         update_value = getattr(updates, field_name)
         candidate = update_value
+        if (
+            field_name == "issue_type"
+            and update_value in {IssueType.ORDER_QUERY, IssueType.UNKNOWN}
+            and existing_values.get(field_name)
+            not in {None, IssueType.ORDER_QUERY.value, IssueType.UNKNOWN.value}
+        ):
+            candidate = existing_values.get(field_name)
         if not _has_value(candidate):
             candidate = existing_values.get(field_name)
         if not _has_value(candidate):
@@ -101,6 +113,10 @@ class IntentService:
             updates=result.slots,
             fallback_order_no=fallback_order_no,
         )
+        if slots.issue_description and _GENERIC_ISSUE_DESCRIPTION_PATTERN.fullmatch(
+            slots.issue_description.strip()
+        ):
+            slots = slots.model_copy(update={"issue_description": None})
         return IntentResult(
             intent=result.intent,
             slots=slots,

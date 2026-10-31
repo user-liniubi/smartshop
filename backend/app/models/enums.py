@@ -53,3 +53,9 @@ class ToolInvocationStatus(StrEnum):
     SUCCESS = "success"
     ERROR = "error"
     BLOCKED = "blocked"
+
+
+class HandoffSource(StrEnum):
+    USER = "user"
+    AI = "ai"
+    RULE = "rule"

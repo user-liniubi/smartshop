@@ -137,6 +137,27 @@ class AfterSalesOrchestrator:
         session.refresh(chat_session)
         return chat_session, decision
 
+    def transition(
+        self,
+        *,
+        session: Session,
+        chat_session: ChatSession,
+        target: WorkflowState,
+    ) -> ChatSession:
+        """Apply one validated state transition without changing intent or slots."""
+
+        current_state = WorkflowState(chat_session.workflow_state)
+        if target not in _ALLOWED_TRANSITIONS[current_state]:
+            raise AppError(
+                status_code=409,
+                code="invalid_workflow_transition",
+                message="当前售后状态不允许此操作",
+            )
+        chat_session.workflow_state = target.value
+        session.commit()
+        session.refresh(chat_session)
+        return chat_session
+
 
 def _slot_value(slots: SlotUpdate, name: str) -> object:
     return getattr(slots, name)

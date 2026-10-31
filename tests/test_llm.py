@@ -147,3 +147,67 @@ def test_deepseek_intent_request_uses_json_object_mode(monkeypatch):
     assert request["temperature"] == 0
     assert '{"issue_type":"return"}' in request["messages"][1]["content"]
     assert "return_request" in content
+
+
+def test_deepseek_tool_planning_returns_validated_call(monkeypatch):
+    class ToolPlanCompletions:
+        def __init__(self) -> None:
+            self.request = None
+
+        async def create(self, **kwargs):
+            self.request = kwargs
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content=None,
+                            tool_calls=[
+                                SimpleNamespace(
+                                    function=SimpleNamespace(
+                                        name="get_my_order",
+                                        arguments='{"order_no":"A10086"}',
+                                    )
+                                )
+                            ],
+                        )
+                    )
+                ]
+            )
+
+    class ToolPlanAsyncOpenAI(FakeAsyncOpenAI):
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self.completions = ToolPlanCompletions()
+            self.chat = SimpleNamespace(completions=self.completions)
+
+    monkeypatch.setattr(llm_module, "AsyncOpenAI", ToolPlanAsyncOpenAI)
+    settings = Settings(
+        _env_file=None,
+        deepseek_api_key="test-deepseek-key",
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_my_order",
+                "description": "Query owned order",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+
+    plan = asyncio.run(
+        DeepSeekClient(settings).plan_tool_call(
+            message="查订单 A10086",
+            tools=tools,
+        )
+    )
+
+    fake_client = ToolPlanAsyncOpenAI.latest_client
+    assert plan == {
+        "name": "get_my_order",
+        "arguments": {"order_no": "A10086"},
+    }
+    assert fake_client is not None
+    assert fake_client.completions.request["tool_choice"] == "auto"
+    assert fake_client.completions.request["tools"] == tools
