@@ -135,3 +135,12 @@ uv run python -m scripts.smoke_after_sales
 - 端到端固定评测集和指标。
 
 这些由 V2 Day 11 之后继续完成。
+
+## Git 提交
+
+提交信息：`feat: complete after-sales agent workflow`  
+提交哈希：`24f4dba`
+
+## 周验收结论
+
+V2 Day 6～10 验收通过。多轮补齐、真实 Tool Calling、订单与政策组合、安全规则、故障降级及人工待接管队列均已实际运行。
