@@ -2,13 +2,14 @@
 
 SmartShop AI 是一个单商家、售后阶段的电商智能客服项目。项目从消费者已经拥有订单之后开始，处理售后政策咨询、订单查询和后续人工接管，不模拟购物车、下单、支付或物流流程。
 
-当前已完成 FastAPI 后端基础、MySQL 数据层、订单权限、会话持久化、DeepSeek Tool Calling、受控本人订单查询、售后文档 RAG、多轮槽位补齐、订单事实与政策组合，以及人工申请/待接管队列。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
+当前已完成 FastAPI 后端、MySQL 数据层、DeepSeek Tool Calling、售后 RAG、多轮状态机、订单与政策组合、故障降级、人工申请、客服原子接管/回复/关闭、消费者端与客服工作台，以及 31 条固定场景评测。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
 
 ## 环境要求
 
 - Python 3.11
 - uv
 - Git
+- Streamlit 1.57+
 
 项目固定使用 Python 3.11，依赖由 `pyproject.toml` 与 `uv.lock` 管理。不要使用全局 `pip` 安装项目依赖。
 
@@ -28,10 +29,24 @@ Copy-Item .env.example .env
 uv run uvicorn backend.app.main:app --reload
 ```
 
+消费者端：
+
+```powershell
+uv run streamlit run frontend/consumer_app.py --server.port 8501
+```
+
+客服工作台：
+
+```powershell
+uv run streamlit run frontend/agent_app.py --server.port 8502
+```
+
 启动后可访问：
 
 - 健康检查：<http://127.0.0.1:8000/health>
 - OpenAPI 文档：<http://127.0.0.1:8000/docs>
+- 消费者端：<http://127.0.0.1:8501>
+- 客服工作台：<http://127.0.0.1:8502>
 
 验证健康检查：
 
@@ -65,6 +80,8 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | `RAG_MIN_SIMILARITY` | `0.5` | 无依据拒答的相似度阈值 |
 | `AGENT_MAX_TOOL_ROUNDS` | `2` | Agent 最大工具轮数 |
 | `AGENT_TOTAL_TIMEOUT_SECONDS` | `60` | 单次 Agent 处理总超时 |
+
+Streamlit 前端默认连接 `http://127.0.0.1:8000`，可以通过启动前设置 `SMARTSHOP_API_URL` 覆盖。
 
 环境名称和日志级别会自动规范化大小写；非法值会在应用启动前导致配置校验失败。
 
@@ -190,6 +207,11 @@ POST /api/v1/rag/ask
 | GET | `/chat/sessions/{id}/messages` | 读取本人会话历史 |
 | POST | `/chat/sessions/{id}/handoff` | 幂等申请人工客服 |
 | GET | `/agent/handoffs` | 客服查看 pending 待接管队列 |
+| GET | `/agent/handoffs/mine` | 客服查看自己已接管的任务 |
+| POST | `/agent/handoffs/{id}/claim` | 客服原子接管任务 |
+| GET | `/agent/sessions/{id}` | 查看已接管会话上下文 |
+| POST | `/agent/sessions/{id}/reply` | 人工回复 |
+| POST | `/agent/sessions/{id}/close` | 关闭人工会话 |
 
 会话和消息保存到 MySQL，后端重启后不会丢失。其他消费者读取会话时返回 404。
 
@@ -202,6 +224,22 @@ POST /api/v1/rag/ask
 - `handoff`
 
 会话进入 `need_human` 后，新的消费者消息仍会保存，但 AI 不再自动生成回复。
+客服接管使用带 `status='pending'` 条件的单条 UPDATE；两个客服同时接管时只有一个成功。AI 在保存回复前会重新检查会话状态，接管后到达的模型回复会被丢弃。
+
+## 评测
+
+固定评测集位于 `data/eval/after_sales_questions.jsonl`，包含 31 条政策、订单、缺失信息、越权、无关、提示注入和相似商品场景。
+
+```powershell
+uv run python -m scripts.run_eval
+```
+
+最新结果写入：
+
+- `data/eval/latest_report.json`
+- `data/eval/latest_report.md`
+
+评测指标包括意图、订单号、工作流动作、工具安全、RAG Hit@3/5、无依据拒答、任务成功率和 P50/P95。小规模固定集结果不能外推为生产准确率。
 
 ## 测试与检查
 
@@ -238,6 +276,7 @@ backend/app/
 ├── api/             # HTTP 路由与依赖组装
 ├── core/            # 配置、日志与统一异常处理
 ├── db/              # SQLAlchemy Engine 与 Session
+├── agent/           # 意图、工具、状态机与售后编排
 ├── models/          # 用户、订单、会话和知识库模型
 ├── rag/             # 文档解析、分块、BGE 和 Chroma
 ├── repositories/    # 数据访问
@@ -245,10 +284,12 @@ backend/app/
 ├── services/        # 业务服务
 └── main.py          # 应用工厂与 FastAPI 入口
 data/docs/           # 可提交的演示知识文件
+data/eval/           # 固定评测集与实测报告
 data/chroma/         # 本地向量索引，不提交
+frontend/            # 消费者端与客服工作台
 scripts/             # 数据导入和 PDF 生成脚本
 tests/               # 接口测试
 docs/                # 周复盘与项目手册
 ```
 
-请求从 `api` 层进入，经 `agent` 与 `services` 协调意图、工具、RAG、规则和状态持久化。下一阶段实现客服原子接管、人工回复/关闭和 Streamlit 双端；异步索引仍属于可选增强。
+请求从 API 层进入，经 Agent 与 Service 协调意图、工具、RAG、规则和状态持久化。下一阶段重点是请求 ID、阶段耗时、安全补测、测试结构和文档收尾；异步文档索引和向量删除仍属于可选增强。

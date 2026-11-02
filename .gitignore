@@ -23,5 +23,6 @@ logs/
 # Editors and operating systems
 .idea/
 .vscode/
+.streamlit/secrets.toml
 .DS_Store
 Thumbs.db

@@ -34,6 +34,7 @@ from backend.app.repositories.chat import (
     get_session_owned_by_user,
     list_messages,
 )
+from backend.app.repositories.handoffs import get_handoff_by_session
 from backend.app.schemas.chat import ChatMessageResponse, ChatTurnResponse
 from backend.app.schemas.handoff import HandoffResponse
 from backend.app.services.answers import AnswerService
@@ -464,6 +465,11 @@ class AfterSalesAgentService:
         rag_context: RAGContext,
         tool_results: list[ToolResultSummary] | None = None,
     ) -> ChatTurnResponse:
+        if not self._ai_reply_allowed(chat_session):
+            return self._waiting_for_agent_response(
+                chat_session=chat_session,
+                user_message=user_message,
+            )
         if chat_session.workflow_state == WorkflowState.CHECKING_POLICY.value:
             chat_session = self.orchestrator.transition(
                 session=self.session,
@@ -554,6 +560,11 @@ class AfterSalesAgentService:
         missing_slots: list[str],
         tool_results: list[ToolResultSummary] | None = None,
     ) -> ChatTurnResponse:
+        if not self._ai_reply_allowed(chat_session):
+            return self._waiting_for_agent_response(
+                chat_session=chat_session,
+                user_message=user_message,
+            )
         assistant_message = add_message(
             self.session,
             session_id=chat_session.id,
@@ -575,11 +586,16 @@ class AfterSalesAgentService:
         chat_session: ChatSession,
         user_message,
     ) -> ChatTurnResponse:
-        handoff = HandoffService(self.session).ensure_handoff(
-            chat_session=chat_session,
-            reason="等待人工客服处理",
-            source=HandoffSource.USER,
-        )[0]
+        handoff = get_handoff_by_session(
+            self.session,
+            session_id=chat_session.id,
+        )
+        if handoff is None:
+            handoff = HandoffService(self.session).ensure_handoff(
+                chat_session=chat_session,
+                reason="等待人工客服处理",
+                source=HandoffSource.USER,
+            )[0]
         return ChatTurnResponse(
             user_message=ChatMessageResponse.model_validate(user_message),
             assistant_message=None,
@@ -587,6 +603,14 @@ class AfterSalesAgentService:
             workflow_state=WorkflowState.NEED_HUMAN,
             handoff=HandoffResponse.model_validate(handoff),
         )
+
+    def _ai_reply_allowed(self, chat_session: ChatSession) -> bool:
+        self.session.refresh(chat_session)
+        return chat_session.status not in {
+            SessionStatus.NEED_HUMAN.value,
+            SessionStatus.HUMAN_ACTIVE.value,
+            SessionStatus.CLOSED.value,
+        }
 
     def _preserve_active_task(self, result: IntentResult) -> IntentResult:
         issue_type = result.slots.issue_type

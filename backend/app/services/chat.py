@@ -6,6 +6,7 @@ from backend.app.repositories.chat import (
     create_chat_session,
     get_session_owned_by_user,
     list_messages,
+    list_sessions_for_user,
 )
 from backend.app.schemas.chat import ChatMessageResponse
 
@@ -23,6 +24,9 @@ class ChatService:
             ChatMessageResponse.model_validate(message)
             for message in list_messages(self.session, session_id=session_id)
         ]
+
+    def list_sessions(self, *, user_id: int) -> list[ChatSession]:
+        return list_sessions_for_user(self.session, user_id=user_id)
 
     def _require_owned_session(self, *, session_id: int, user_id: int) -> ChatSession:
         chat_session = get_session_owned_by_user(

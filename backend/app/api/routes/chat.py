@@ -30,6 +30,17 @@ def create_session(
     return ChatSessionResponse.model_validate(chat_session)
 
 
+@router.get("/sessions", response_model=list[ChatSessionResponse])
+def list_sessions(
+    current_user: CurrentUser,
+    session: Annotated[Session, Depends(get_db)],
+) -> list[ChatSessionResponse]:
+    return [
+        ChatSessionResponse.model_validate(chat_session)
+        for chat_session in ChatService(session).list_sessions(user_id=current_user.id)
+    ]
+
+
 @router.get(
     "/sessions/{session_id}/messages",
     response_model=list[ChatMessageResponse],

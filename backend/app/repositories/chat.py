@@ -26,6 +26,15 @@ def get_session_owned_by_user(
     )
 
 
+def list_sessions_for_user(session: Session, *, user_id: int) -> list[ChatSession]:
+    statement = (
+        select(ChatSession)
+        .where(ChatSession.user_id == user_id)
+        .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
+    )
+    return list(session.scalars(statement))
+
+
 def list_messages(session: Session, *, session_id: int) -> list[ChatMessage]:
     statement = (
         select(ChatMessage)

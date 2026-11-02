@@ -21,3 +21,7 @@ class HandoffResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AgentReplyRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)

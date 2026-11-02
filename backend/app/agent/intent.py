@@ -28,6 +28,19 @@ _GENERIC_ISSUE_DESCRIPTION_PATTERN = re.compile(
     r"^(?:我的)?(?:耳机)?(?:坏了|有问题|不能用了)"
     r"(?:\s*[，,。]?\s*(?:想|要)?(?:退货|换货|退款))?[。！!]?$"
 )
+_PRODUCT_USAGE_KEYWORDS = {
+    "内存",
+    "接口",
+    "续航",
+    "连接",
+    "清洁",
+    "使用",
+}
+_EXPLICIT_RETURN_OR_EXCHANGE_KEYWORDS = {
+    "退货",
+    "退款",
+    "换货",
+}
 
 
 def extract_order_no(content: str) -> str | None:
@@ -102,9 +115,20 @@ class IntentService:
             result = parse_intent_result(raw_result)
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
             logger.warning("Intent output was invalid and has been downgraded")
+            fallback_intent = _fallback_intent(content)
             result = IntentResult(
-                intent=AfterSalesIntent.UNKNOWN,
-                slots=SlotUpdate(),
+                intent=fallback_intent,
+                slots=SlotUpdate(
+                    issue_type=(
+                        IssueType.PRODUCT_USAGE
+                        if fallback_intent == AfterSalesIntent.AFTER_SALES_POLICY
+                        and any(
+                            keyword in content
+                            for keyword in ("内存", "接口", "续航", "连接", "清洁", "使用")
+                        )
+                        else None
+                    )
+                ),
                 confidence=0,
             )
 
@@ -117,8 +141,20 @@ class IntentService:
             slots.issue_description.strip()
         ):
             slots = slots.model_copy(update={"issue_description": None})
+        effective_intent = result.intent
+        if (
+            any(keyword in content for keyword in _PRODUCT_USAGE_KEYWORDS)
+            and not any(keyword in content for keyword in _EXPLICIT_RETURN_OR_EXCHANGE_KEYWORDS)
+            and result.intent
+            in {
+                AfterSalesIntent.UNKNOWN,
+                AfterSalesIntent.EXCHANGE_REQUEST,
+            }
+        ):
+            effective_intent = AfterSalesIntent.AFTER_SALES_POLICY
+            slots = slots.model_copy(update={"issue_type": IssueType.PRODUCT_USAGE})
         return IntentResult(
-            intent=result.intent,
+            intent=effective_intent,
             slots=slots,
             confidence=result.confidence,
         )
@@ -130,3 +166,32 @@ def _has_value(value: object) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
     return True
+
+
+def _fallback_intent(content: str) -> AfterSalesIntent:
+    normalized = content.lower()
+    if any(keyword in content for keyword in ("人工", "客服")):
+        return AfterSalesIntent.HUMAN_REQUEST
+    if any(keyword in content for keyword in ("换货", "更换")):
+        return AfterSalesIntent.EXCHANGE_REQUEST
+    if any(keyword in content for keyword in ("退货", "退款")):
+        return AfterSalesIntent.RETURN_REQUEST
+    if any(keyword in normalized for keyword in ("保修", "质保", "warranty")):
+        return AfterSalesIntent.WARRANTY_QUESTION
+    if any(
+        keyword in content
+        for keyword in (
+            "内存",
+            "接口",
+            "续航",
+            "连接",
+            "清洁",
+            "使用",
+            "发货",
+            "配送",
+            "运费",
+            "政策",
+        )
+    ):
+        return AfterSalesIntent.AFTER_SALES_POLICY
+    return AfterSalesIntent.UNKNOWN

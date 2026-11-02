@@ -113,6 +113,26 @@ def test_invalid_model_json_becomes_unknown_without_crashing():
     assert result.slots.order_no == "A10086"
 
 
+def test_invalid_model_json_uses_policy_keyword_fallback():
+    client = FakeIntentClient("这不是 JSON")
+
+    result = asyncio.run(IntentService(client).extract(content="笔记本支持自己扩展内存吗？"))
+
+    assert result.intent == AfterSalesIntent.AFTER_SALES_POLICY
+    assert result.slots.issue_type == IssueType.PRODUCT_USAGE
+
+
+def test_product_usage_question_is_not_misclassified_as_exchange():
+    client = FakeIntentClient(
+        '{"intent":"exchange_request","slots":{"issue_type":"exchange"},"confidence":0.6}'
+    )
+
+    result = asyncio.run(IntentService(client).extract(content="笔记本的板载内存可以更换吗？"))
+
+    assert result.intent == AfterSalesIntent.AFTER_SALES_POLICY
+    assert result.slots.issue_type == IssueType.PRODUCT_USAGE
+
+
 def test_intent_service_accepts_json_inside_markdown_fence():
     client = FakeIntentClient('```json\n{"intent":"human_request","slots":{},"confidence":1}\n```')
 
