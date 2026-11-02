@@ -1,6 +1,9 @@
 import streamlit as st
 
-from frontend.api_client import ApiClient, ApiError
+try:
+    from frontend.api_client import ApiClient, ApiError
+except ModuleNotFoundError:
+    from api_client import ApiClient, ApiError
 
 st.set_page_config(
     page_title="SmartShop 售后客服",
