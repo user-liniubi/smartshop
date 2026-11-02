@@ -49,6 +49,9 @@ class ApiClient:
     def get_messages(self, session_id: int) -> list[dict[str, Any]]:
         return self._request("GET", f"/chat/sessions/{session_id}/messages")
 
+    def get_order_by_number(self, order_no: str) -> dict[str, Any]:
+        return self._request("GET", f"/orders/by-number/{order_no}")
+
     def send_message(self, session_id: int, content: str) -> dict[str, Any]:
         return self._request(
             "POST",

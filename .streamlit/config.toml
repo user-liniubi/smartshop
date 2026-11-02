@@ -28,3 +28,6 @@ paddingBottom = "1.2rem"
 
 [server]
 headless = true
+
+[client]
+toolbarMode = "minimal"
