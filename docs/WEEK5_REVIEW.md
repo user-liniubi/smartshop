@@ -133,3 +133,8 @@ p95_latency_ms=4261.63
 ## 验收结论
 
 V2 Day 11～15 功能、双端页面、真实 MySQL 人工协同闭环和固定评测均已通过。
+
+## Git 提交
+
+提交信息：`feat: add human handoff workbench and agent evaluation`  
+提交哈希：`282c67d`
