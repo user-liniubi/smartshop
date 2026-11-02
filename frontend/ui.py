@@ -41,7 +41,49 @@ APP_CSS = """
     min-height: 2.125rem !important;
 }
 .st-key-message-scroll {
-    padding: 0.1rem 0;
+    background: #F7F8FA;
+    border-radius: 16px;
+    padding: 0.75rem;
+}
+[class*="st-key-message-consumer-"],
+[class*="st-key-message-assistant-"],
+[class*="st-key-message-agent-"],
+[class*="st-key-message-system-"] {
+    width: fit-content;
+    max-width: 78%;
+    padding: 0.65rem 0.85rem;
+    margin-bottom: 0.65rem;
+}
+[class*="st-key-message-consumer-"] {
+    margin-left: auto;
+    background: #DCF8C6;
+    border-radius: 16px 16px 4px 16px;
+}
+[class*="st-key-message-assistant-"] {
+    margin-right: auto;
+    background: #FFFFFF;
+    border: 1px solid #E5E9F0;
+    border-radius: 16px 16px 16px 4px;
+}
+[class*="st-key-message-agent-"] {
+    margin-right: auto;
+    background: #EAF2FF;
+    border: 1px solid #D7E7FF;
+    border-radius: 16px 16px 16px 4px;
+}
+[class*="st-key-message-system-"] {
+    max-width: 100%;
+    margin-right: auto;
+    margin-left: auto;
+    background: #EEF1F5;
+    border-radius: 10px;
+    text-align: center;
+}
+.st-key-message-scroll [class*="st-key-message-"] p {
+    margin-bottom: 0.45rem;
+}
+.st-key-message-scroll [class*="st-key-message-"] p:last-child {
+    margin-bottom: 0;
 }
 .stApp {
     font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -141,26 +183,23 @@ def message_summary(messages: list[dict[str, Any]]) -> str:
 
 def render_message(message: dict[str, Any], *, staff_view: bool = False) -> None:
     sender = message.get("sender_type", "assistant")
-    role = "user" if sender == "consumer" else "assistant"
+    bucket = sender if sender in {"consumer", "assistant", "agent", "system"} else "assistant"
     if sender == "agent":
-        avatar = ":material/support_agent:"
         label = "人工客服"
     elif sender == "assistant":
-        avatar = ":material/auto_awesome:"
         label = "SmartService AI"
     elif sender == "system":
-        avatar = ":material/info:"
         label = "系统"
     else:
-        avatar = ":material/person:"
         label = "消费者"
 
-    with st.chat_message(role, avatar=avatar):
+    message_id = message.get("id", f"{sender}-{message.get('created_at', '')}")
+    with st.container(key=f"message-{bucket}-{message_id}"):
         header = f"**{label}**"
         timestamp = format_timestamp(message.get("created_at"))
         if timestamp:
             header += f" · {timestamp}"
-        st.markdown(header)
+        st.caption(header)
         st.markdown(message.get("content") or "")
         citations = message.get("citations_json") or []
         if citations:
