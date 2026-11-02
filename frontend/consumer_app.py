@@ -154,10 +154,7 @@ def render_live_workspace() -> None:
                         session_messages[session_id],
                         session_id,
                     )
-                    with st.container(
-                        border=is_selected,
-                        key=f"consumer-session-{session_id}",
-                    ):
+                    with st.container(key=f"consumer-session-{session_id}"):
                         if st.button(
                             title,
                             key=f"select-consumer-session-{session_id}",
@@ -205,7 +202,7 @@ def render_live_workspace() -> None:
 
             with st.container(key="message-scroll", height=500):
                 if not messages:
-                    with st.container(key="welcome-card", border=True):
+                    with st.container(key="welcome-card"):
                         st.markdown("### 你好，我是 SmartService AI")
                         st.write("告诉我订单号和遇到的问题，我会核验订单并检索售后政策。")
                     st.caption("你可以从下面几个问题开始：")
@@ -274,15 +271,14 @@ def render_live_workspace() -> None:
                     order = client().get_order_by_number(order_no)
                 except ApiError:
                     order = None
-            render_order_card(order, key="consumer-order")
-            render_session_meta(selected, key="consumer-session-meta")
-            with st.container(key="consumer-support-card", border=True):
-                st.markdown("#### :material/health_and_safety: 售后流程")
-                st.markdown(
-                    ":material/check_circle: 自动核验本人订单  \n"
-                    ":material/menu_book: 政策回答附带来源  \n"
-                    ":material/support_agent: 复杂问题可转人工"
-                )
+            render_order_card(order)
+            st.space("medium")
+            render_session_meta(selected)
+            st.space("medium")
+            st.markdown("#### 售后流程")
+            st.caption("自动核验本人订单")
+            st.caption("政策回答附带来源")
+            st.caption("复杂问题可转人工")
 
 
 render_live_workspace()

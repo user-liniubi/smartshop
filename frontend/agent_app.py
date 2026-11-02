@@ -171,10 +171,7 @@ def render_live_workspace() -> None:
                     for item in filtered:
                         item_id = item["id"]
                         is_selected = item_id == selected_handoff_id
-                        with st.container(
-                            border=is_selected,
-                            key=f"agent-handoff-{item_id}",
-                        ):
+                        with st.container(key=f"agent-handoff-{item_id}"):
                             if st.button(
                                 f"会话 #{item['session_id']}",
                                 key=f"select-handoff-{item_id}",
@@ -196,7 +193,7 @@ def render_live_workspace() -> None:
                 return
 
             if view == "待接管":
-                with st.container(key="detail-card", border=True):
+                with st.container(key="detail-card"):
                     st.markdown(f"### :material/pending_actions: 会话 #{handoff['session_id']}")
                     st.markdown(f"**转人工原因**  \n{handoff['reason']}")
                     st.caption(
@@ -273,24 +270,25 @@ def render_live_workspace() -> None:
                     st.success("会话已关闭。", icon=":material/task_alt:")
 
             with detail_column:
-                render_order_card(context.get("order"), key="agent-order")
-                render_session_meta(chat_session, key="agent-session-meta")
-                with st.container(key="agent-task-card", border=True):
-                    st.markdown("#### :material/assignment_turned_in: 人工任务")
-                    st.caption(f"任务状态：{handoff_status_label(context['handoff']['status'])}")
-                    handoff_source = context["handoff"]["source"]
-                    st.caption(f"转人工来源：{SOURCE_LABELS.get(handoff_source, handoff_source)}")
-                    if chat_session["status"] != "closed":
-                        if st.button(
-                            "结束会话",
-                            icon=":material/task_alt:",
-                            width="stretch",
-                        ):
-                            try:
-                                client().close_agent_session(handoff["session_id"])
-                                st.rerun()
-                            except ApiError as error:
-                                show_error(error)
+                render_order_card(context.get("order"))
+                st.space("medium")
+                render_session_meta(chat_session)
+                st.space("medium")
+                st.markdown("#### 人工任务")
+                st.caption(f"任务状态：{handoff_status_label(context['handoff']['status'])}")
+                handoff_source = context["handoff"]["source"]
+                st.caption(f"转人工来源：{SOURCE_LABELS.get(handoff_source, handoff_source)}")
+                if chat_session["status"] != "closed":
+                    if st.button(
+                        "结束会话",
+                        icon=":material/task_alt:",
+                        width="stretch",
+                    ):
+                        try:
+                            client().close_agent_session(handoff["session_id"])
+                            st.rerun()
+                        except ApiError as error:
+                            show_error(error)
 
 
 render_live_workspace()

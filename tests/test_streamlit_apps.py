@@ -108,7 +108,7 @@ def test_consumer_authenticated_view_renders_history(monkeypatch):
     app.run()
 
     assert not app.exception
-    assert any("工作流：已解决" in caption.value for caption in app.caption)
+    assert any("当前阶段：已解决" in caption.value for caption in app.caption)
     assert any("3 秒自动同步" in caption.value for caption in app.caption)
 
 

@@ -11,11 +11,10 @@ APP_CSS = """
 .st-key-agent-nav,
 .st-key-agent-list,
 .st-key-agent-chat {
-    background: rgba(255, 255, 255, 0.94);
-    border: 1px solid #DCE5F2;
-    border-radius: 20px;
-    padding: 1rem;
-    box-shadow: 0 18px 50px rgba(15, 35, 65, 0.07);
+    background: #FFFFFF;
+    border: 1px solid #E5E9F0;
+    border-radius: 16px;
+    padding: 1.1rem;
 }
 .st-key-sm-nav,
 .st-key-agent-nav {
@@ -27,10 +26,11 @@ APP_CSS = """
     min-height: calc(100vh - 4.5rem);
 }
 .st-key-brand-block {
-    padding: 0.35rem 0 0.8rem;
+    padding: 0.15rem 0 0.9rem;
 }
 .st-key-brand-block h3 {
-    font-size: 1.28rem;
+    font-size: 1.18rem !important;
+    line-height: 1.35 !important;
     margin-bottom: 0.15rem;
     white-space: nowrap;
 }
@@ -38,26 +38,27 @@ APP_CSS = """
 .st-key-handoff-list button {
     justify-content: flex-start !important;
     text-align: left !important;
+    min-height: 2.125rem !important;
 }
 .st-key-message-scroll {
-    border: 1px solid #EDF1F7;
-    border-radius: 16px;
-    padding: 0.35rem 0.7rem;
+    padding: 0.1rem 0;
 }
-.st-key-detail-card,
-.st-key-order-card,
-.st-key-session-meta,
-.st-key-consumer-order,
-.st-key-consumer-session-meta,
-.st-key-consumer-support-card,
-.st-key-agent-order,
-.st-key-agent-session-meta,
-.st-key-agent-task-card,
-.st-key-welcome-card {
-    background: #F8FAFD;
-    border: 1px solid #E3EAF4;
-    border-radius: 16px;
-    padding: 0.85rem;
+.stApp {
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.stApp h3 {
+    font-size: 1.2rem !important;
+    line-height: 1.35 !important;
+    letter-spacing: -0.015em;
+}
+.stApp h4 {
+    font-size: 0.95rem !important;
+    line-height: 1.4 !important;
+}
+.stApp button,
+.stApp input,
+.stApp textarea {
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 @media (max-width: 900px) {
     .st-key-sm-nav,
@@ -176,34 +177,29 @@ def render_message(message: dict[str, Any], *, staff_view: bool = False) -> None
 
 def render_order_card(
     order: dict[str, Any] | None,
-    *,
-    key: str = "order-card",
 ) -> None:
-    with st.container(key=key, border=True):
-        st.markdown("#### :material/receipt_long: 订单信息")
-        if not order:
-            st.caption("会话中还没有关联订单。发送订单号后可自动识别。")
-            return
-        st.markdown(f"**{order['order_no']}**")
-        st.caption(f"状态：{status_label(order['status'])}")
-        product = order.get("product") or {}
-        st.caption(f"商品：{product.get('name', '未知商品')}")
+    st.markdown("#### 订单信息")
+    if not order:
+        st.caption("尚未关联订单")
+        st.caption("发送订单号后可自动识别。")
+        return
+    st.markdown(f"**{order['order_no']}**")
+    st.caption(status_label(order["status"]))
+    product = order.get("product") or {}
+    st.caption(product.get("name", "未知商品"))
 
 
 def render_session_meta(
     session: dict[str, Any],
-    *,
-    key: str = "session-meta",
 ) -> None:
-    with st.container(key=key, border=True):
-        st.markdown("#### :material/info: 会话信息")
-        st.caption(f"会话状态：{status_label(session['status'])}")
-        workflow = (
-            "人工处理中"
-            if session["status"] == "human_active"
-            else workflow_label(session["workflow_state"])
-        )
-        st.caption(f"工作流：{workflow}")
-        if session.get("intent"):
-            st.caption(f"识别意图：{session['intent']}")
-        st.caption(f"创建时间：{format_timestamp(session.get('created_at'))}")
+    st.markdown("#### 会话信息")
+    st.markdown(f"**{status_label(session['status'])}**")
+    workflow = (
+        "人工处理中"
+        if session["status"] == "human_active"
+        else workflow_label(session["workflow_state"])
+    )
+    st.caption(f"当前阶段：{workflow}")
+    if session.get("intent"):
+        st.caption(f"识别意图：{session['intent']}")
+    st.caption(f"创建时间：{format_timestamp(session.get('created_at'))}")
