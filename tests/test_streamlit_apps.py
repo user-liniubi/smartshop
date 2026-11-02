@@ -94,6 +94,7 @@ def test_consumer_authenticated_view_renders_history(monkeypatch):
 
     assert not app.exception
     assert any("工作流：resolved" in caption.value for caption in app.caption)
+    assert any("每 3 秒自动同步" in caption.value for caption in app.caption)
 
 
 def test_agent_pending_view_renders_claim_action(monkeypatch):
@@ -128,3 +129,4 @@ def test_agent_pending_view_renders_claim_action(monkeypatch):
 
     assert not app.exception
     assert any(button.label == "接管会话" for button in app.button)
+    assert any("每 3 秒自动同步" in caption.value for caption in app.caption)
