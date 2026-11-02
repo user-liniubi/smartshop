@@ -16,7 +16,8 @@ def test_consumer_login_page_renders():
     assert not app.exception
     assert app.title[0].value == "SmartShop 售后服务"
     assert len(app.text_input) == 2
-    assert app.button[0].label == "登录"
+    assert len(app.image) == 1
+    assert app.button[0].label == "安全登录"
 
 
 def test_agent_login_page_renders():
@@ -28,7 +29,8 @@ def test_agent_login_page_renders():
     assert not app.exception
     assert app.title[0].value == "SmartShop 客服工作台"
     assert len(app.text_input) == 2
-    assert app.button[0].label == "登录"
+    assert len(app.image) == 1
+    assert app.button[0].label == "安全登录"
 
 
 def test_consumer_authenticated_view_renders_history(monkeypatch):

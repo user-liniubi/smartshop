@@ -1,8 +1,30 @@
 [theme]
+base = "light"
 primaryColor = "#2563EB"
-backgroundColor = "#F8FAFC"
-secondaryBackgroundColor = "#E8EEF8"
-textColor = "#152033"
+backgroundColor = "#F4F7FC"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0F172A"
+borderColor = "#D8E1EF"
+linkColor = "#1D4ED8"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
+baseRadius = "0.75rem"
+buttonRadius = "0.7rem"
+showWidgetBorder = true
+showSidebarBorder = true
+paddingTop = "1.4rem"
+paddingBottom = "1.8rem"
+linkUnderline = false
+
+[theme.sidebar]
+backgroundColor = "#0B1F3A"
+secondaryBackgroundColor = "#132B4D"
+textColor = "#F8FAFC"
+borderColor = "#27466D"
+primaryColor = "#60A5FA"
+linkColor = "#93C5FD"
+paddingTop = "1rem"
+paddingBottom = "1.2rem"
 
 [server]
 headless = true

@@ -2,8 +2,10 @@ import streamlit as st
 
 try:
     from frontend.api_client import ApiClient, ApiError
+    from frontend.login_ui import render_login_screen
 except ModuleNotFoundError:
     from api_client import ApiClient, ApiError
+    from login_ui import render_login_screen
 
 st.set_page_config(
     page_title="SmartShop 客服工作台",
@@ -31,21 +33,17 @@ def show_error(error: ApiError) -> None:
     st.error(error.message, title="操作失败")
 
 
-st.title("SmartShop 客服工作台")
-st.caption("查看待接管会话、接管、回复并关闭售后任务")
-
 if st.session_state.agent_token is None:
-    with st.form("agent_login", border=False):
-        username = st.text_input("用户名")
-        password = st.text_input("密码", type="password")
-        submitted = st.form_submit_button(
-            "登录",
-            icon=":material/login:",
-        )
+    username, password, submitted = render_login_screen(
+        role="客服",
+        brand_title="SmartShop 客服工作台",
+        subtitle="查看待接管任务，结合上下文完成回复与关闭。",
+        account_hint="演示账号：agent_demo / Agent123!",
+    )
 
     if submitted:
         try:
-            login = ApiClient().login(username.strip(), password)
+            login = ApiClient().login(username, password)
             if login["user"]["role"] != "agent":
                 st.error("请使用客服账号登录", title="角色不匹配")
             else:
@@ -55,6 +53,9 @@ if st.session_state.agent_token is None:
         except ApiError as error:
             show_error(error)
     st.stop()
+
+st.title("SmartShop 客服工作台")
+st.caption("查看待接管会话、接管、回复并关闭售后任务")
 
 with st.sidebar:
     st.subheader(st.session_state.agent_user["username"])
