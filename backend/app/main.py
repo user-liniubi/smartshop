@@ -8,6 +8,7 @@ from backend.app.api.router import api_router
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.exceptions import register_exception_handlers
 from backend.app.core.logging import configure_logging
+from backend.app.core.middleware import RequestContextMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application = FastAPI(
         title=application_settings.app_name,
-        version="0.15.0",
+        version="0.20.0",
         debug=application_settings.debug,
         lifespan=lifespan,
     )
     application.state.settings = application_settings
+    application.add_middleware(RequestContextMiddleware)
     register_exception_handlers(application)
     application.include_router(api_router)
     return application

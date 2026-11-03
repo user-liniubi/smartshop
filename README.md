@@ -2,7 +2,9 @@
 
 SmartShop AI 是一个单商家、售后阶段的电商智能客服项目。项目从消费者已经拥有订单之后开始，处理售后政策咨询、订单查询和后续人工接管，不模拟购物车、下单、支付或物流流程。
 
-当前已完成 FastAPI 后端、MySQL 数据层、DeepSeek Tool Calling、售后 RAG、多轮状态机、订单与政策组合、故障降级、人工申请、客服原子接管/回复/关闭、消费者端与客服工作台，以及 31 条固定场景评测。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
+当前已完成 FastAPI 后端、MySQL 数据层、DeepSeek Tool Calling、售后 RAG、多轮状态机、订单与政策组合、故障降级、人工申请、客服原子接管/回复/关闭、消费者端与客服工作台、31 条固定场景评测、请求级观测、异步文档索引和双存储删除。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
+
+架构、状态流转和人工接管的详细设计见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)，技术亮点和面试源码证据见 [INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md)。
 
 ## 环境要求
 
@@ -72,6 +74,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | `LOG_LEVEL` | `INFO` | `DEBUG`、`INFO`、`WARNING`、`ERROR` 或 `CRITICAL` |
 | `DATABASE_URL` | - | SQLAlchemy 数据库连接地址 |
 | `DATABASE_ECHO` | `false` | 是否输出 SQL 调试日志 |
+| `REDIS_URL` | `redis://127.0.0.1:6379/0` | Celery Broker 与结果后端 |
 | `DEEPSEEK_API_KEY` | - | DeepSeek API Key，仅保存在本地 `.env` |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | DeepSeek 对话模型 |
 | `CHROMA_PATH` | `./data/chroma` | Chroma 持久化目录 |
@@ -135,6 +138,7 @@ uv run python -m sample_data.seed
 - `handoffs`：人工接管记录
 - `documents`：知识文件与索引状态
 - `document_chunks`：Chunk 文本、页码、标题和向量 ID 映射
+- `ingestion_jobs`：异步索引任务状态、进度和结果
 
 ## 登录与订单接口
 
@@ -180,7 +184,22 @@ uv run python -m scripts.ingest_demo_docs
 
 知识文件位于 `data/docs/`，包含退换货政策、质保规则、配送 FAQ、五个商品说明和一份 PDF 售后 FAQ。脚本可重复运行，重复文档会通过 SHA-256 去重。
 
-客服可以使用 `POST /knowledge/upload` 上传 Markdown、TXT 或 PDF，也可以通过 `GET /knowledge/documents` 查看已索引文档。上传与首次模型加载为同步操作，后续阶段再改为 Redis/Celery 异步任务。
+客服可以使用 `POST /knowledge/upload` 同步上传 Markdown、TXT 或 PDF，也可以通过 `GET /knowledge/documents` 查看已索引文档。
+
+异步索引接口：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| POST | `/knowledge/upload-async` | 保存文件并返回 Celery task ID |
+| GET | `/knowledge/jobs/{task_id}` | 查询 pending/started/success/failure |
+| DELETE | `/knowledge/documents/{document_id}` | 删除 MySQL 文档、Chunk 和 Chroma 向量 |
+
+启动 Redis 和 Windows 开发 Worker：
+
+```powershell
+docker start redis
+uv run celery -A backend.app.workers.celery_app:celery_app worker --loglevel=INFO --pool=solo
+```
 
 RAG 问答需要使用消费者或客服 Bearer Token：
 
@@ -270,28 +289,33 @@ uv run python -m scripts.smoke_after_sales
 
 参数校验失败返回 `validation_error`，未处理异常统一返回 `internal_server_error`，且不会把内部异常详情暴露给客户端。
 
+每个 HTTP 响应包含 `X-Request-ID`。日志记录请求 ID、方法、路径、状态和总耗时；Agent 分别记录意图、编排、RAG、模型和工具阶段。日志不输出 Token、密码、API Key 或完整 Prompt。
+
 ## 当前目录
 
 ```text
 backend/app/
 ├── agent/           # 意图、工具白名单、售后编排
 ├── api/             # HTTP 路由与依赖组装
-├── core/            # 配置、日志与统一异常处理
+├── core/            # 配置、请求 ID、日志与统一异常处理
 ├── db/              # SQLAlchemy Engine 与 Session
-├── agent/           # 意图、工具、状态机与售后编排
 ├── models/          # 用户、订单、会话和知识库模型
 ├── rag/             # 文档解析、分块、BGE 和 Chroma
 ├── repositories/    # 数据访问
 ├── schemas/         # 接口请求与响应模型
 ├── services/        # 业务服务
+├── workers/         # Celery 应用与异步索引任务
 └── main.py          # 应用工厂与 FastAPI 入口
 data/docs/           # 可提交的演示知识文件
 data/eval/           # 固定评测集与实测报告
 data/chroma/         # 本地向量索引，不提交
 frontend/            # 消费者端与客服工作台
 scripts/             # 数据导入和 PDF 生成脚本
-tests/               # 接口测试
+tests/
+├── unit/            # 配置、意图、Prompt、规则、解析与分块
+├── integration/     # 数据库、API、权限、RAG、Agent、handoff
+└── e2e/             # 双端页面与端到端测试
 docs/                # 周复盘与项目手册
 ```
 
-请求从 API 层进入，经 Agent 与 Service 协调意图、工具、RAG、规则和状态持久化。下一阶段重点是请求 ID、阶段耗时、安全补测、测试结构和文档收尾；异步文档索引和向量删除仍属于可选增强。
+请求从 API 层进入，经 Agent 与 Service 协调意图、工具、RAG、规则和状态持久化。第六周已完成请求级观测、安全补测、测试结构整理、架构与面试文档、异步文档索引和双存储删除；周验收记录见 [WEEK6_REVIEW.md](docs/WEEK6_REVIEW.md)。

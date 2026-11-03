@@ -157,6 +157,28 @@ class KnowledgeService:
             )
         )
 
+    def delete_document(self, document_id: int) -> None:
+        document = self.session.get(Document, document_id)
+        if document is None:
+            raise AppError(
+                status_code=404,
+                code="document_not_found",
+                message="知识文档不存在",
+            )
+
+        vector_ids = [chunk.vector_id for chunk in document.chunks]
+        try:
+            self.vector_store.delete(vector_ids)
+            self.session.delete(document)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise AppError(
+                status_code=500,
+                code="document_delete_failed",
+                message="知识文档删除失败，请重试",
+            ) from None
+
     @staticmethod
     def _sha256(path: Path) -> str:
         digest = hashlib.sha256()

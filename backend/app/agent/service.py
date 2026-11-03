@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -85,6 +86,7 @@ class AfterSalesAgentService:
         user_id: int,
         content: str,
     ) -> ChatTurnResponse:
+        started_at = time.perf_counter()
         chat_session = self._require_owned_session(
             session_id=session_id,
             user_id=user_id,
@@ -107,12 +109,17 @@ class AfterSalesAgentService:
             )
 
         existing_slots = dict(chat_session.slots_json or {})
+        intent_started_at = time.perf_counter()
         try:
             async with asyncio.timeout(self.settings.agent_total_timeout_seconds):
                 intent_result = await self.intent_service.extract(
                     content=content,
                     existing_slots=existing_slots,
                 )
+            logger.info(
+                "agent intent completed duration_ms=%.2f",
+                (time.perf_counter() - intent_started_at) * 1000,
+            )
         except TimeoutError:
             logger.warning("Intent request timeout session_id=%s", session_id)
             return self._fail_to_handoff(
@@ -137,6 +144,12 @@ class AfterSalesAgentService:
             session_id=session_id,
             user_id=user_id,
             result=intent_result,
+        )
+        logger.info(
+            "agent orchestration action=%s workflow=%s duration_ms=%.2f",
+            decision.action.value,
+            decision.workflow_state.value,
+            (time.perf_counter() - started_at) * 1000,
         )
 
         if decision.reply_text:

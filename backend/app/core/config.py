@@ -21,6 +21,7 @@ class Settings(BaseSettings):
         min_length=1,
     )
     database_echo: bool = False
+    redis_url: str = "redis://127.0.0.1:6379/0"
     auth_secret: str = Field(
         default="dev-only-change-this-secret-32chars",
         min_length=32,

@@ -1,11 +1,12 @@
 [project]
 name = "smartshop-ai"
-version = "0.15.0"
+version = "0.20.0"
 description = "SmartShop AI backend service"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "alembic>=1.14,<2",
+    "celery[redis]>=5.4,<6",
     "cryptography>=43,<47",
     "fastapi>=0.115,<1",
     "httpx>=0.28,<2",

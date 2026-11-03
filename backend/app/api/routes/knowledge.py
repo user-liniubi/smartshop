@@ -1,33 +1,35 @@
 import hashlib
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from sqlalchemy.orm import Session
 
 from backend.app.api.dependencies import AgentUser
 from backend.app.api.rag_dependencies import get_knowledge_service
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.exceptions import AppError
+from backend.app.db.session import get_db
+from backend.app.models import IngestionJobStatus
 from backend.app.rag.parsing import SUPPORTED_EXTENSIONS
+from backend.app.repositories.ingestion_jobs import (
+    create_ingestion_job,
+    get_ingestion_job,
+)
 from backend.app.schemas.knowledge import (
+    AsyncKnowledgeUploadResponse,
+    IngestionJobResponse,
     KnowledgeDocumentResponse,
     KnowledgeUploadResponse,
 )
 from backend.app.services.knowledge import KnowledgeService
+from backend.app.workers.tasks import ingest_document_task
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
 
-@router.post("/upload", response_model=KnowledgeUploadResponse)
-def upload_document(
-    current_agent: AgentUser,
-    file: Annotated[UploadFile, File()],
-    service: Annotated[KnowledgeService, Depends(get_knowledge_service)],
-    settings: Annotated[Settings, Depends(get_settings)],
-    product_id: Annotated[int | None, Form(gt=0)] = None,
-) -> KnowledgeUploadResponse:
-    """Upload and synchronously index one knowledge document."""
-
+def _persist_upload(*, file: UploadFile, settings: Settings) -> tuple[str, Path]:
     filename = Path(file.filename or "").name
     suffix = Path(filename).suffix.lower()
     if not filename or suffix not in SUPPORTED_EXTENSIONS:
@@ -50,6 +52,20 @@ def upload_document(
     content_hash = hashlib.sha256(payload).hexdigest()[:16]
     target_path = settings.upload_dir / f"{Path(filename).stem}-{content_hash}{suffix}"
     target_path.write_bytes(payload)
+    return filename, target_path
+
+
+@router.post("/upload", response_model=KnowledgeUploadResponse)
+def upload_document(
+    current_agent: AgentUser,
+    file: Annotated[UploadFile, File()],
+    service: Annotated[KnowledgeService, Depends(get_knowledge_service)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    product_id: Annotated[int | None, Form(gt=0)] = None,
+) -> KnowledgeUploadResponse:
+    """Upload and synchronously index one knowledge document."""
+
+    filename, target_path = _persist_upload(file=file, settings=settings)
 
     try:
         result = service.ingest_file(
@@ -65,6 +81,63 @@ def upload_document(
         raise
 
 
+@router.post(
+    "/upload-async",
+    response_model=AsyncKnowledgeUploadResponse,
+    status_code=202,
+)
+def upload_document_async(
+    current_agent: AgentUser,
+    file: Annotated[UploadFile, File()],
+    session: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    product_id: Annotated[int | None, Form(gt=0)] = None,
+) -> AsyncKnowledgeUploadResponse:
+    filename, target_path = _persist_upload(file=file, settings=settings)
+    task_id = uuid4().hex
+    job = create_ingestion_job(
+        session,
+        task_id=task_id,
+        filename=filename,
+        source_path=str(target_path),
+        product_id=product_id,
+    )
+
+    try:
+        ingest_document_task.apply_async(args=[task_id], task_id=task_id)
+    except Exception:
+        target_path.unlink(missing_ok=True)
+        job.status = IngestionJobStatus.FAILURE.value
+        job.error_message = "任务队列不可用"
+        session.commit()
+        raise AppError(
+            status_code=503,
+            code="ingestion_queue_unavailable",
+            message="异步索引队列暂时不可用",
+        ) from None
+
+    return AsyncKnowledgeUploadResponse(
+        task_id=task_id,
+        status=IngestionJobStatus(job.status),
+    )
+
+
+@router.get("/jobs/{task_id}", response_model=IngestionJobResponse)
+def get_ingestion_job_status(
+    task_id: str,
+    current_agent: AgentUser,
+    session: Annotated[Session, Depends(get_db)],
+) -> IngestionJobResponse:
+    job = get_ingestion_job(session, task_id=task_id)
+    if job is None:
+        raise AppError(
+            status_code=404,
+            code="ingestion_job_not_found",
+            message="任务不存在",
+        )
+    return IngestionJobResponse.model_validate(job)
+
+
 @router.get("/documents", response_model=list[KnowledgeDocumentResponse])
 def list_documents(
     current_agent: AgentUser,
@@ -73,3 +146,13 @@ def list_documents(
     return [
         KnowledgeDocumentResponse.model_validate(document) for document in service.list_documents()
     ]
+
+
+@router.delete("/documents/{document_id}", status_code=204)
+def delete_document(
+    document_id: int,
+    current_agent: AgentUser,
+    service: Annotated[KnowledgeService, Depends(get_knowledge_service)],
+) -> Response:
+    service.delete_document(document_id)
+    return Response(status_code=204)

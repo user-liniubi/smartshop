@@ -49,6 +49,13 @@ class KnowledgeDocumentStatus(StrEnum):
     FAILED = "failed"
 
 
+class IngestionJobStatus(StrEnum):
+    PENDING = "pending"
+    STARTED = "started"
+    SUCCESS = "success"
+    FAILURE = "failure"
+
+
 class ToolInvocationStatus(StrEnum):
     SUCCESS = "success"
     ERROR = "error"

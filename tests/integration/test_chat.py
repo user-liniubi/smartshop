@@ -84,3 +84,18 @@ def test_consumer_cannot_read_another_users_chat(seeded_client):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "chat_session_not_found"
+
+
+def test_chat_message_over_limit_is_rejected(seeded_client):
+    app.dependency_overrides[get_after_sales_agent_service] = lambda: FakeAgentService()
+    headers = _login_headers(seeded_client, "consumer_demo")
+    session_id = seeded_client.post("/chat/sessions", headers=headers).json()["id"]
+
+    response = seeded_client.post(
+        f"/chat/sessions/{session_id}/messages",
+        headers=headers,
+        json={"content": "x" * 4001},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"

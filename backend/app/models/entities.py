@@ -20,6 +20,7 @@ from backend.app.db.base import Base
 from backend.app.models.enums import (
     HandoffSource,
     HandoffStatus,
+    IngestionJobStatus,
     KnowledgeDocumentStatus,
     OrderStatus,
     SenderType,
@@ -329,3 +330,42 @@ class DocumentChunk(Base):
     )
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class IngestionJob(Base):
+    __tablename__ = "ingestion_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'started', 'success', 'failure')",
+            name="valid_status",
+        ),
+        Index("ix_ingestion_jobs_status_created_at", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    source_path: Mapped[str] = mapped_column(String(500))
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default=IngestionJobStatus.PENDING.value,
+    )
+    progress: Mapped[int] = mapped_column(default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

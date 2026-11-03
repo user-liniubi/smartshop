@@ -4,7 +4,7 @@ from streamlit.testing.v1 import AppTest
 
 from frontend.api_client import ApiClient
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_consumer_login_page_renders():
