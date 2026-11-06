@@ -7,7 +7,7 @@
 | 日期 | 交付 | 验收结果 |
 |---|---|---|
 | Day 16 | 请求 ID、请求日志、Agent 阶段耗时、输入限制、提示注入防护 | `/health` 返回 200 且带 32 位 `X-Request-ID`；实测请求耗时 8.94 ms |
-| Day 17 | 将测试整理为 `unit / integration / e2e` | 整理后已通过 93 项测试；新增异步上传测试后以最终全量回归为准 |
+| Day 17 | 将测试整理为 `unit / integration / e2e` | 最终全量回归 94 项测试全部通过 |
 | Day 18 | 架构图、状态机、人工接管时序、6 个源码亮点、面试指南 | `docs/ARCHITECTURE.md`、`docs/INTERVIEW_GUIDE.md` 已建立并补齐 |
 | Day 19 | Redis + Celery 异步索引、任务状态、重试与幂等 | 真实任务 `f3ffdc07ad8d4f47a1a73ef3fb595f0f` 成功，进度 100，生成文档 11 |
 | Day 20 | MySQL 文档/Chunk 与 Chroma 向量同步删除 | 删除接口返回 204；Chroma 1→0，documents 1→0，document_chunks 1→0，删除后不再召回 |

@@ -9,8 +9,8 @@
     "rag_hit_at_5": 1.0,
     "no_evidence_refusal_rate": 1.0,
     "task_success_rate": 1.0,
-    "p50_latency_ms": 1203.76,
-    "p95_latency_ms": 4261.63
+    "p50_latency_ms": 874.7,
+    "p95_latency_ms": 1943.45
   },
   "results": [
     {
@@ -24,7 +24,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 15827.2,
+      "latency_ms": 85576.2,
       "actual_intent": "warranty_question",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -40,7 +40,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1457.06,
+      "latency_ms": 777.07,
       "actual_intent": "after_sales_policy",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -56,7 +56,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 4261.63,
+      "latency_ms": 873.27,
       "actual_intent": "after_sales_policy",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -72,7 +72,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 959.83,
+      "latency_ms": 1000.9,
       "actual_intent": "after_sales_policy",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -88,7 +88,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 3513.63,
+      "latency_ms": 805.45,
       "actual_intent": "after_sales_policy",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -104,7 +104,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 909.65,
+      "latency_ms": 1943.45,
       "actual_intent": "warranty_question",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -120,7 +120,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 3633.62,
+      "latency_ms": 804.18,
       "actual_intent": "after_sales_policy",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -136,7 +136,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 909.26,
+      "latency_ms": 772.49,
       "actual_intent": "warranty_question",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -152,7 +152,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 2955.84,
+      "latency_ms": 1082.92,
       "actual_intent": "order_query",
       "actual_order_no": "A10086",
       "actual_action": "query_order"
@@ -168,7 +168,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1101.52,
+      "latency_ms": 1077.96,
       "actual_intent": "order_query",
       "actual_order_no": "A10087",
       "actual_action": "query_order"
@@ -184,7 +184,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1199.26,
+      "latency_ms": 774.31,
       "actual_intent": "order_query",
       "actual_order_no": "A10089",
       "actual_action": "query_order"
@@ -200,7 +200,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 889.75,
+      "latency_ms": 916.76,
       "actual_intent": "return_request",
       "actual_order_no": "A10086",
       "actual_action": "query_order"
@@ -216,7 +216,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 714.81,
+      "latency_ms": 1039.85,
       "actual_intent": "exchange_request",
       "actual_order_no": "A10087",
       "actual_action": "query_order"
@@ -232,7 +232,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 3552.98,
+      "latency_ms": 1082.0,
       "actual_intent": "warranty_question",
       "actual_order_no": "A10088",
       "actual_action": "query_order"
@@ -248,7 +248,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1511.84,
+      "latency_ms": 733.33,
       "actual_intent": "order_query",
       "actual_order_no": "A10088",
       "actual_action": "query_order"
@@ -264,7 +264,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 2884.93,
+      "latency_ms": 844.79,
       "actual_intent": "exchange_request",
       "actual_order_no": "A10090",
       "actual_action": "query_order"
@@ -280,7 +280,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1169.68,
+      "latency_ms": 858.61,
       "actual_intent": "return_request",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -296,7 +296,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1476.55,
+      "latency_ms": 1021.16,
       "actual_intent": "order_query",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -312,7 +312,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 3787.31,
+      "latency_ms": 993.47,
       "actual_intent": "unknown",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -328,7 +328,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1227.26,
+      "latency_ms": 874.7,
       "actual_intent": "order_query",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -344,7 +344,7 @@
       "hit_at_5": null,
       "refusal_correct": true,
       "task_correct": true,
-      "latency_ms": 3449.61,
+      "latency_ms": 633.09,
       "actual_intent": "unknown",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -360,7 +360,7 @@
       "hit_at_5": null,
       "refusal_correct": true,
       "task_correct": true,
-      "latency_ms": 1203.76,
+      "latency_ms": 1375.71,
       "actual_intent": "unknown",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -376,7 +376,7 @@
       "hit_at_5": null,
       "refusal_correct": true,
       "task_correct": true,
-      "latency_ms": 1006.5,
+      "latency_ms": 507.43,
       "actual_intent": "unknown",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -392,7 +392,7 @@
       "hit_at_5": null,
       "refusal_correct": true,
       "task_correct": true,
-      "latency_ms": 782.65,
+      "latency_ms": 1111.73,
       "actual_intent": "unknown",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -408,7 +408,7 @@
       "hit_at_5": null,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 923.73,
+      "latency_ms": 668.79,
       "actual_intent": "order_query",
       "actual_order_no": "A10088",
       "actual_action": "query_order"
@@ -424,7 +424,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1091.66,
+      "latency_ms": 864.85,
       "actual_intent": "return_request",
       "actual_order_no": "A10086",
       "actual_action": "query_order"
@@ -440,7 +440,7 @@
       "hit_at_5": null,
       "refusal_correct": true,
       "task_correct": true,
-      "latency_ms": 1084.11,
+      "latency_ms": 1356.25,
       "actual_intent": "unknown",
       "actual_order_no": null,
       "actual_action": "ask_more_info"
@@ -456,7 +456,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1064.29,
+      "latency_ms": 663.59,
       "actual_intent": "warranty_question",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -472,7 +472,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1220.24,
+      "latency_ms": 907.15,
       "actual_intent": "after_sales_policy",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -488,7 +488,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1241.09,
+      "latency_ms": 844.03,
       "actual_intent": "after_sales_policy",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"
@@ -504,7 +504,7 @@
       "hit_at_5": true,
       "refusal_correct": null,
       "task_correct": true,
-      "latency_ms": 1040.92,
+      "latency_ms": 968.12,
       "actual_intent": "after_sales_policy",
       "actual_order_no": null,
       "actual_action": "retrieve_policy"

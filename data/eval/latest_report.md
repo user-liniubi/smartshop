@@ -13,8 +13,8 @@
 | rag_hit_at_5 | 1.0 |
 | no_evidence_refusal_rate | 1.0 |
 | task_success_rate | 1.0 |
-| p50_latency_ms | 1203.76 |
-| p95_latency_ms | 4261.63 |
+| p50_latency_ms | 874.7 |
+| p95_latency_ms | 1943.45 |
 
 ## 分类结果
 

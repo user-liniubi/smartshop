@@ -4,10 +4,32 @@
 
 ## 演示前启动
 
+确保 Docker Desktop、Redis 容器和 MySQL 容器已经启动：
+
 ```powershell
 docker start smartshop-mysql-dev
+docker start redis
 uv run alembic upgrade head
+uv run python -m sample_data.seed
+```
+
+打开三个终端，分别启动 API、Worker 和双端页面。
+
+终端 1，启动 API：
+
+```powershell
 uv run uvicorn backend.app.main:app --reload
+```
+
+终端 2，启动 Windows Celery Worker：
+
+```powershell
+uv run celery -A backend.app.workers.celery_app:celery_app worker --loglevel=INFO --pool=solo
+```
+
+终端 3，启动消费者端和客服工作台：
+
+```powershell
 uv run streamlit run frontend/consumer_app.py --server.port 8501
 uv run streamlit run frontend/agent_app.py --server.port 8502
 ```
@@ -87,10 +109,21 @@ agent_demo / Agent123!
 
 展示：
 
+- `/health` 响应头中的 `X-Request-ID`；
 - `/docs` 中的受控工具接口；
 - `tool_invocations` 审计；
 - handoff 的 `pending / claimed / closed` 状态；
 - `data/eval/latest_report.md` 中的固定评测结果。
+
+## 8. 异步文档索引｜可选 30 秒
+
+使用客服账号调用 `POST /knowledge/upload-async`，展示：
+
+- 接口返回 `202` 和 `task_id`；
+- `GET /knowledge/jobs/{task_id}` 从 `pending/started` 变为 `success`；
+- 新文档出现在 `GET /knowledge/documents`；
+- 调用 `DELETE /knowledge/documents/{document_id}` 后返回 `204`；
+- 再次查询文档列表和原关键词，确认文档与向量均不再返回。
 
 ## 异常演示可选
 

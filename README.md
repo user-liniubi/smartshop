@@ -6,6 +6,8 @@ SmartShop AI 是一个单商家、售后阶段的电商智能客服项目。项�
 
 架构、状态流转和人工接管的详细设计见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)，技术亮点和面试源码证据见 [INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md)。
 
+最终验收结果见 [FINAL_ACCEPTANCE.md](docs/FINAL_ACCEPTANCE.md)，现场演示步骤见 [DEMO.md](docs/DEMO.md)。
+
 ## 环境要求
 
 - Python 3.11
@@ -27,8 +29,22 @@ Copy-Item .env.example .env
 
 ## 启动后端
 
+先确认 Docker Desktop 已启动，并启动 MySQL 与 Redis：
+
+```powershell
+docker start smartshop-mysql-dev
+docker start redis
+uv run alembic upgrade head
+```
+
 ```powershell
 uv run uvicorn backend.app.main:app --reload
+```
+
+异步文档索引需要另开终端启动 Worker：
+
+```powershell
+uv run celery -A backend.app.workers.celery_app:celery_app worker --loglevel=INFO --pool=solo
 ```
 
 消费者端：
