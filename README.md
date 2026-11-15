@@ -1,10 +1,16 @@
 # SmartShop AI
 
-SmartShop AI 是一个单商家、售后阶段的电商智能客服项目。项目从消费者已经拥有订单之后开始，处理售后政策咨询、订单查询和后续人工接管，不模拟购物车、下单、支付或物流流程。
+SmartShop AI 是一个面向消费电子产品售后场景的单商家智能客服项目，以头戴式无线降噪耳机为核心演示商品，同时覆盖键盘、显示器、笔记本和鼠标等数码外设。项目从消费者已经拥有订单之后开始，处理售后政策咨询、订单查询和后续人工接管，不模拟购物车、下单、支付或物流流程。
 
-当前已完成 FastAPI 后端、MySQL 数据层、DeepSeek Tool Calling、售后 RAG、多轮状态机、订单与政策组合、故障降级、人工申请、客服原子接管/回复/关闭、消费者端与客服工作台、31 条固定场景评测、请求级观测、异步文档索引和双存储删除。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
+> 技术定位：高级 RAG 应用 + 受控业务工作流 + 有限 Tool Calling。模型辅助意图、槽位和答案生成，流程、权限和异常由后端控制；项目不是自主多步 Agent。
+
+当前已完成 FastAPI 后端、MySQL 数据层、DeepSeek 受控 Tool Calling、售后 RAG、多轮状态机、订单与政策组合、退换货工单自动创建与人工审批、故障降级、人工申请、客服原子接管/回复/关闭、消费者端与客服工作台、31 条固定场景评测、请求级观测、异步文档索引和双存储删除。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
 
 架构、状态流转和人工接管的详细设计见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)，技术亮点和面试源码证据见 [INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md)。
+
+RAG 的完整链路、参数、失败定位、评测口径以及与 Agent 的边界见 [RAG_INTERVIEW_GUIDE.md](docs/RAG_INTERVIEW_GUIDE.md)。
+
+项目业务、架构、调用链、数据模型、源码阅读顺序和面试深挖题目的总复习入口见 [PROJECT_DEEP_DIVE.md](docs/PROJECT_DEEP_DIVE.md)。
 
 最终验收结果见 [FINAL_ACCEPTANCE.md](docs/FINAL_ACCEPTANCE.md)，现场演示步骤见 [DEMO.md](docs/DEMO.md)。
 
@@ -32,9 +38,10 @@ Copy-Item .env.example .env
 先确认 Docker Desktop 已启动，并启动 MySQL 与 Redis：
 
 ```powershell
-docker start smartshop-mysql-dev
-docker start redis
+docker compose up -d mysql redis
 uv run alembic upgrade head
+uv run python -m sample_data.seed
+uv run python -m scripts.ingest_demo_docs
 ```
 
 ```powershell
@@ -97,8 +104,8 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | `EMBEDDING_MODEL` | `BAAI/bge-small-zh-v1.5` | 中文嵌入模型 |
 | `RAG_TOP_K` | `4` | 默认检索数量 |
 | `RAG_MIN_SIMILARITY` | `0.5` | 无依据拒答的相似度阈值 |
-| `AGENT_MAX_TOOL_ROUNDS` | `2` | Agent 最大工具轮数 |
-| `AGENT_TOTAL_TIMEOUT_SECONDS` | `60` | 单次 Agent 处理总超时 |
+| `AGENT_MAX_TOOL_ROUNDS` | `2` | 售后工作流工具轮数配置；当前主链只执行有限工具调用 |
+| `AGENT_TOTAL_TIMEOUT_SECONDS` | `60` | 单次售后工作流处理总超时 |
 
 Streamlit 前端默认连接 `http://127.0.0.1:8000`，可以通过启动前设置 `SMARTSHOP_API_URL` 覆盖。
 
@@ -155,6 +162,7 @@ uv run python -m sample_data.seed
 - `documents`：知识文件与索引状态
 - `document_chunks`：Chunk 文本、页码、标题和向量 ID 映射
 - `ingestion_jobs`：异步索引任务状态、进度和结果
+- `after_sales_tickets`：退换货工单、政策依据、审批状态和审批人
 
 ## 登录与订单接口
 
@@ -198,7 +206,7 @@ EMBEDDING_LOCAL_FILES_ONLY=true
 uv run python -m scripts.ingest_demo_docs
 ```
 
-知识文件位于 `data/docs/`，包含退换货政策、质保规则、配送 FAQ、五个商品说明和一份 PDF 售后 FAQ。脚本可重复运行，重复文档会通过 SHA-256 去重。
+知识文件位于 `data/docs/`，当前共有 19 份虚构消费电子售后资料、74 个 Chunk/向量，覆盖退换货政策、质保规则、配送与运输异常、订单变更、隐私边界、售后处理流程、五个商品说明、五个商品故障排查和一份 PDF 售后 FAQ。脚本可重复运行，重复文档会通过 SHA-256 去重。
 
 客服可以使用 `POST /knowledge/upload` 同步上传 Markdown、TXT 或 PDF，也可以通过 `GET /knowledge/documents` 查看已索引文档。
 
@@ -213,7 +221,7 @@ uv run python -m scripts.ingest_demo_docs
 启动 Redis 和 Windows 开发 Worker：
 
 ```powershell
-docker start redis
+docker compose up -d redis
 uv run celery -A backend.app.workers.celery_app:celery_app worker --loglevel=INFO --pool=solo
 ```
 
@@ -250,9 +258,23 @@ POST /api/v1/rag/ask
 
 会话和消息保存到 MySQL，后端重启后不会丢失。其他消费者读取会话时返回 404。
 
+### 售后工单
+
+当用户明确表达“申请退货”“办理换货”等提交诉求，并且订单信息、故障描述和政策审核均通过时，系统会自动生成一张 `pending_approval` 工单，不需要人工重复录入订单和问题。
+
+如果用户只是询问“能不能退”或“退货政策是什么”，系统只回答政策，不会创建工单。
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/after-sales/tickets/mine` | 消费者查看自己的售后工单 |
+| GET | `/agent/after-sales/tickets` | 客服查看待审批工单 |
+| POST | `/agent/after-sales/tickets/{id}/review` | 客服通过或拒绝工单 |
+
+工单与聊天会话一对一关联，重复提交会返回同一张工单。审批使用条件更新，两个客服同时审批时只有一个成功。审批通过只代表内部工单审核完成，不执行真实退款、换货或物流操作。
+
 聊天响应除消息外还包含：
 
-- `action`：`ask_more_info`、`answer`、`handoff_created` 或 `waiting_for_agent`
+- `action`：`ask_more_info`、`answer`、`ticket_created`、`handoff_created` 或 `waiting_for_agent`
 - `workflow_state`
 - `missing_slots`
 - `tool_results`
@@ -305,7 +327,7 @@ uv run python -m scripts.smoke_after_sales
 
 参数校验失败返回 `validation_error`，未处理异常统一返回 `internal_server_error`，且不会把内部异常详情暴露给客户端。
 
-每个 HTTP 响应包含 `X-Request-ID`。日志记录请求 ID、方法、路径、状态和总耗时；Agent 分别记录意图、编排、RAG、模型和工具阶段。日志不输出 Token、密码、API Key 或完整 Prompt。
+每个 HTTP 响应包含 `X-Request-ID`。日志记录请求 ID、方法、路径、状态和总耗时；售后工作流分别记录意图、编排、RAG、模型和工具阶段。日志不输出 Token、密码、API Key 或完整 Prompt。
 
 ## 当前目录
 
@@ -329,9 +351,15 @@ frontend/            # 消费者端与客服工作台
 scripts/             # 数据导入和 PDF 生成脚本
 tests/
 ├── unit/            # 配置、意图、Prompt、规则、解析与分块
-├── integration/     # 数据库、API、权限、RAG、Agent、handoff
+├── integration/     # 数据库、API、权限、RAG、售后工作流、handoff
 └── e2e/             # 双端页面与端到端测试
 docs/                # 周复盘与项目手册
 ```
 
-请求从 API 层进入，经 Agent 与 Service 协调意图、工具、RAG、规则和状态持久化。第六周已完成请求级观测、安全补测、测试结构整理、架构与面试文档、异步文档索引和双存储删除；周验收记录见 [WEEK6_REVIEW.md](docs/WEEK6_REVIEW.md)。
+请求从 API 层进入，经售后工作流与 Service 协调意图、工具、RAG、规则和状态持久化。第六周已完成请求级观测、安全补测、测试结构整理、架构与面试文档、异步文档索引和双存储删除；周验收记录见 [WEEK6_REVIEW.md](docs/WEEK6_REVIEW.md)。当前实现保留了有限 Agent 要素，但没有多轮自主规划循环，不应描述为完整 RAG + Agent 项目。
+
+停止本地数据库和 Redis：
+
+```powershell
+docker compose stop mysql redis
+```

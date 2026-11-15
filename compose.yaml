@@ -1,0 +1,37 @@
+services:
+  mysql:
+    image: mysql:8.0.40
+    environment:
+      MYSQL_DATABASE: smartshop
+      MYSQL_USER: smartshop
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-smartshop_dev_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-smartshop_root_dev_password}
+    ports:
+      - "3308:3306"
+    volumes:
+      - smartshop_mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - smartshop_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  smartshop_mysql_data:
+  smartshop_redis_data:

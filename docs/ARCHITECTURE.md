@@ -1,6 +1,6 @@
-# SmartService AI 架构说明
+# SmartShop AI 架构说明
 
-> 当前定位：单商家售后智能客服的本地可运行技术原型，不是生产部署。
+> 当前定位：面向消费电子产品的单商家售后本地技术原型，属于高级 RAG + 受控业务工作流 + 有限 Tool Calling，不是自主多步 Agent，也不是生产部署。核心场景为头戴式无线降噪耳机，同时覆盖键盘、显示器、笔记本和鼠标等数码外设。
 > `开发手册-售后闭环V2.md` 是唯一执行路线；根目录旧手册仅作为历史材料。
 
 ## 系统架构
@@ -8,11 +8,11 @@
 ```mermaid
 graph TB
     Consumer[消费者 Streamlit] --> API[FastAPI]
-    AgentUI[客服 Streamlit] --> API
+    SupportUI[客服 Streamlit] --> API
 
     API --> Request[请求 ID / 日志中间件]
     Request --> Auth[认证与对象级权限]
-    Auth --> Chat[Chat / Agent API]
+    Auth --> Chat[Chat / 售后工作流 API]
     Auth --> Knowledge[知识库 API]
     Auth --> Handoff[人工接管 API]
 
@@ -23,6 +23,8 @@ graph TB
     Orchestrator --> Rules[确定性规则]
 
     Tools --> MySQL[(MySQL)]
+    Orchestrator --> Tickets[售后工单审批]
+    Tickets --> MySQL
     Handoff --> MySQL
     Knowledge --> MySQL
     Knowledge --> Chroma[(Chroma)]
@@ -37,7 +39,7 @@ graph TB
 sequenceDiagram
     participant U as 消费者
     participant API as FastAPI
-    participant A as AgentService
+    participant A as 售后工作流
     participant I as IntentService
     participant T as ToolRegistry
     participant DB as MySQL
@@ -113,6 +115,37 @@ sequenceDiagram
     API->>DB: 写入 closed_at
 ```
 
+## 退换货自动建单时序
+
+```mermaid
+sequenceDiagram
+    participant U as 消费者
+    participant API as FastAPI
+    participant L as DeepSeek
+    participant W as 售后工作流
+    participant DB as MySQL
+    participant R as RAG
+    participant A as 客服
+
+    U->>API: 我要申请退货，订单号 A10086，左耳没有声音
+    API->>DB: 保存用户消息
+    API->>L: 提取意图、槽位和提交意愿
+    L-->>API: return_request + submit_requested=true
+    API->>W: 检查槽位和状态机
+    W->>DB: 查询当前用户订单
+    W->>R: 检索商品售后政策
+    R-->>W: evidence + citations
+    W->>W: 校验订单状态和政策依据
+    W->>DB: 幂等创建 pending_approval 工单
+    W-->>U: 工单号 + 待审批提示
+    A->>API: 查看待审批工单
+    A->>API: 通过或拒绝
+    API->>DB: 条件更新审批状态
+    U->>API: 查询自己的工单状态
+```
+
+只有用户明确表达提交、办理或确认退换货时才自动建单。单纯政策咨询和资格询问不会创建工单。
+
 ## 异步文档索引时序
 
 ```mermaid
@@ -157,11 +190,12 @@ sequenceDiagram
 | 售后政策 | Chroma 检索片段 + 来源文档 | 无证据时编造退款资格 |
 | 会话状态 | 后端状态机 | 模型直接写数据库状态 |
 | 工具调用 | ToolRegistry + `tool_invocations` | 任意 SQL 或未注册工具 |
+| 售后审批 | `after_sales_tickets` + 条件更新 | 模型直接决定审批或重复建单 |
 
 ## 可观测性
 
 - 每个请求生成 32 位 `X-Request-ID`；
 - 请求日志包含方法、路径、状态和总耗时；
-- Agent 记录意图、编排、工具、检索和模型耗时；
+- 售后工作流记录意图、编排、工具、检索和模型耗时；
 - 日志不记录 Token、API Key、密码或完整 Prompt；
 - 工具审计表记录工具名、脱敏参数、结果摘要、状态和耗时。

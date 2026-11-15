@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 验收日期 | 2026-11-06 |
-| 项目定位 | 单商家售后智能客服本地技术原型 |
+| 项目定位 | 面向消费电子产品的单商家售后高级 RAG + 受控业务工作流本地技术原型 |
 | 发布版本 | `v1.0.0` |
 | 代码基线 | `e8eff02` 加最终验收文档与版本号变更 |
 
@@ -17,11 +17,11 @@
 
 | 检查项 | 命令 | 实际结果 |
 |---|---|---|
-| 全量测试 | `uv run pytest -q` | `94 passed in 44.30s` |
+| 全量测试 | `uv run pytest -q` | `101 passed` |
 | 静态检查 | `uv run ruff check .` | `All checks passed!` |
-| 格式检查 | `uv run ruff format --check .` | `139 files already formatted` |
+| 格式检查 | `uv run ruff format --check .` | `163 files already formatted` |
 | 锁文件 | `uv lock --check` | 通过 |
-| 迁移版本 | `uv run alembic current` | `0eebbeffd084 (head)` |
+| 迁移版本 | `uv run alembic current` | `4f8c2d7a1b90 (head)` |
 | 模型迁移差异 | `uv run alembic check` | `No new upgrade operations detected` |
 
 ## 固定评测
@@ -43,8 +43,8 @@ uv run python -m scripts.run_eval
 | RAG Hit@5 | 1.0 |
 | 无依据拒答率 | 1.0 |
 | 任务成功率 | 1.0 |
-| P50 延迟 | 874.70 ms |
-| P95 延迟 | 1943.45 ms |
+| P50 延迟 | 954.93 ms |
+| P95 延迟 | 1315.19 ms |
 
 评测期间出现过非法意图结构化输出，系统按设计降级后仍完成全部场景。31 条样本是自建固定场景，不能代表开放用户和生产流量上的泛化准确率。
 
@@ -97,6 +97,21 @@ document_id: 12
 
 该验收同时验证了 Redis -> Celery -> MySQL `ingestion_jobs`、BGE 向量写入和双存储删除链路。
 
+## 自动售后工单
+
+使用真实 FastAPI、DeepSeek、MySQL 和 Chroma 提交“订单号 A10086，左耳没有声音，我想申请退货”：
+
+```text
+session_id: 15
+chat_action: ticket_created
+ticket_no: AS-E479065982FD
+initial_status: pending_approval
+review_status: approved
+reviewer_id: 3
+```
+
+该验收证明系统能够自动完成退换货意图识别、订单归属校验、政策检索和待审批工单创建，并由客服完成审批。当前审批只更新内部工单状态，不执行真实退款、换货、支付或物流动作。
+
 ## 手工复验
 
 1. 按 [DEMO.md](DEMO.md) 启动 MySQL、Redis、API、Worker 和双端页面。
@@ -107,8 +122,45 @@ document_id: 12
 
 ## 当前边界
 
-- 项目是单商家、售后阶段的技术原型，不包含购物车、下单、支付、物流或多商家经营。
+- 项目是面向消费电子产品的单商家售后技术原型，以头戴式无线降噪耳机为核心，同时覆盖键盘、显示器、笔记本和鼠标；不包含购物车、下单、支付、物流或多商家经营。
+- 项目使用 LLM 辅助意图、槽位、有限订单工具选择和答案生成，但流程由后端状态机控制，不是自主多步 Agent。
+- 退换货工单审批是项目内部流程，尚未对接企业真实退款、仓储或物流系统。
 - 31 条固定评测结果不能等同于生产准确率。
 - 尚未完成最终回答正确率和引用支持度的人工抽检。
 - 没有生产级队列监控、告警、高可用和容量验证。
 - 消费者端和客服端使用 Streamlit，不是 React/Vue 商业前端。
+
+## 知识库扩充后补充验收
+
+> 验收日期：2026-11-07
+
+在 `v1.0.0` 基础上新增 9 份消费电子售后资料，知识库当前包含 19 份文档、74 个 Chunk 和 74 个向量。
+
+实际回归结果：
+
+```text
+自动化测试：101 passed
+Ruff 检查：All checks passed
+Ruff 格式检查：163 files already formatted
+MySQL documents：19
+MySQL document_chunks：74
+Chroma vectors：74
+```
+
+固定评测重新执行后：
+
+```text
+case_count=31
+intent_accuracy=1.0
+order_no_extraction_accuracy=1.0
+action_accuracy=1.0
+tool_behavior_accuracy=1.0
+rag_hit_at_3=1.0
+rag_hit_at_5=1.0
+no_evidence_refusal_rate=1.0
+task_success_rate=1.0
+p50_latency_ms=954.93
+p95_latency_ms=1315.19
+```
+
+新增资料经过真实 BGE + Chroma 检索抽样，键盘进液、显示器无信号、笔记本电池异常、外包装破损、送修数据备份和鼠标双击等问题均能命中对应资料。该结果仍是固定演示集验证，不代表生产泛化准确率。

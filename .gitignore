@@ -19,6 +19,11 @@ data/chroma/
 .mysql-smoke-data*/
 logs/
 *.log
+.workbuddy/
+
+# Personal career drafts
+导学-SmartShop.md
+面经-SmartShop.md
 
 # Editors and operating systems
 .idea/
