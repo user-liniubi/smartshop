@@ -43,6 +43,7 @@ class SlotUpdate(BaseModel):
         min_length=2,
         max_length=1000,
     )
+    submit_requested: bool | None = None
 
     @field_validator("order_no", "issue_description", mode="before")
     @classmethod
@@ -121,5 +122,6 @@ class ToolResultSummary(BaseModel):
 class ConversationAction(StrEnum):
     ASK_MORE_INFO = "ask_more_info"
     ANSWER = "answer"
+    TICKET_CREATED = "ticket_created"
     HANDOFF_CREATED = "handoff_created"
     WAITING_FOR_AGENT = "waiting_for_agent"

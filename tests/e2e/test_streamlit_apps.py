@@ -95,6 +95,11 @@ def test_consumer_authenticated_view_renders_history(monkeypatch):
             "created_at": "2026-10-31T08:00:00",
         },
     )
+    monkeypatch.setattr(
+        ApiClient,
+        "list_my_after_sales_tickets",
+        lambda self: [],
+    )
     app = AppTest.from_file(
         str(ROOT / "frontend" / "consumer_app.py"),
         default_timeout=15,
@@ -218,3 +223,46 @@ def test_agent_claimed_view_renders_context_and_reply_form(monkeypatch):
     assert not app.exception
     assert any(button.label == "发送回复" for button in app.button)
     assert any(button.label == "结束会话" for button in app.button)
+
+
+def test_agent_after_sales_ticket_view_renders_review_actions(monkeypatch):
+    monkeypatch.setattr(ApiClient, "list_pending_handoffs", lambda self: [])
+    monkeypatch.setattr(ApiClient, "list_my_handoffs", lambda self: [])
+    monkeypatch.setattr(
+        ApiClient,
+        "list_pending_after_sales_tickets",
+        lambda self: [
+            {
+                "id": 11,
+                "ticket_no": "AS-DEMO000001",
+                "session_id": 9,
+                "user_id": 1,
+                "order_id": 1,
+                "request_type": "return",
+                "issue_description": "左耳没有声音",
+                "policy_citations": [],
+                "status": "pending_approval",
+                "reviewer_id": None,
+                "review_note": None,
+                "reviewed_at": None,
+                "created_at": "2026-11-13T08:00:00",
+                "updated_at": "2026-11-13T08:00:00",
+            }
+        ],
+    )
+    app = AppTest.from_file(
+        str(ROOT / "frontend" / "agent_app.py"),
+        default_timeout=15,
+    )
+    app.session_state["agent_token"] = "test-token"
+    app.session_state["agent_user"] = {
+        "id": 3,
+        "username": "agent_demo",
+        "role": "agent",
+    }
+    app.session_state["agent_view"] = "工单审批"
+    app.run()
+
+    assert not app.exception
+    assert any(button.label == "通过工单" for button in app.button)
+    assert any(button.label == "拒绝工单" for button in app.button)

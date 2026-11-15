@@ -67,6 +67,25 @@ class ApiClient:
             json={"reason": reason},
         )
 
+    def list_my_after_sales_tickets(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/after-sales/tickets/mine")
+
+    def list_pending_after_sales_tickets(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/agent/after-sales/tickets")
+
+    def review_after_sales_ticket(
+        self,
+        ticket_id: int,
+        *,
+        decision: str,
+        review_note: str = "",
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/agent/after-sales/tickets/{ticket_id}/review",
+            json={"decision": decision, "review_note": review_note},
+        )
+
     def list_pending_handoffs(self) -> list[dict[str, Any]]:
         return self._request("GET", "/agent/handoffs")
 

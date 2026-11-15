@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base
 from backend.app.models.enums import (
+    AfterSalesTicketStatus,
     HandoffSource,
     HandoffStatus,
     IngestionJobStatus,
@@ -52,6 +53,14 @@ class User(Base):
     orders: Mapped[list[Order]] = relationship(back_populates="user")
     chat_sessions: Mapped[list[ChatSession]] = relationship(back_populates="user")
     claimed_handoffs: Mapped[list[Handoff]] = relationship(back_populates="agent")
+    after_sales_tickets: Mapped[list[AfterSalesTicket]] = relationship(
+        back_populates="user",
+        foreign_keys="AfterSalesTicket.user_id",
+    )
+    reviewed_after_sales_tickets: Mapped[list[AfterSalesTicket]] = relationship(
+        back_populates="reviewer",
+        foreign_keys="AfterSalesTicket.reviewer_id",
+    )
 
 
 class Product(Base):
@@ -97,6 +106,9 @@ class Order(Base):
 
     user: Mapped[User] = relationship(back_populates="orders")
     product: Mapped[Product] = relationship(back_populates="orders")
+    after_sales_tickets: Mapped[list[AfterSalesTicket]] = relationship(
+        back_populates="order",
+    )
 
 
 class ChatSession(Base):
@@ -152,6 +164,11 @@ class ChatSession(Base):
     )
     tool_invocations: Mapped[list[ToolInvocation]] = relationship(
         back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    after_sales_ticket: Mapped[AfterSalesTicket | None] = relationship(
+        back_populates="session",
+        uselist=False,
         cascade="all, delete-orphan",
     )
 
@@ -268,6 +285,85 @@ class ToolInvocation(Base):
     )
 
     session: Mapped[ChatSession] = relationship(back_populates="tool_invocations")
+
+
+class AfterSalesTicket(Base):
+    __tablename__ = "after_sales_tickets"
+    __table_args__ = (
+        CheckConstraint(
+            "request_type IN ('return', 'exchange')",
+            name="valid_request_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending_approval', 'approved', 'rejected', 'cancelled')",
+            name="valid_status",
+        ),
+        Index(
+            "ix_after_sales_tickets_status_created_at",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_no: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"),
+        unique=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    request_type: Mapped[str] = mapped_column(String(20))
+    issue_description: Mapped[str] = mapped_column(Text)
+    policy_citations_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON,
+        default=list,
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        default=AfterSalesTicketStatus.PENDING_APPROVAL.value,
+        server_default=AfterSalesTicketStatus.PENDING_APPROVAL.value,
+    )
+    reviewer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    session: Mapped[ChatSession] = relationship(back_populates="after_sales_ticket")
+    user: Mapped[User] = relationship(
+        back_populates="after_sales_tickets",
+        foreign_keys=[user_id],
+    )
+    order: Mapped[Order] = relationship(back_populates="after_sales_tickets")
+    reviewer: Mapped[User | None] = relationship(
+        back_populates="reviewed_after_sales_tickets",
+        foreign_keys=[reviewer_id],
+    )
+
+    @property
+    def policy_citations(self) -> list[dict[str, Any]]:
+        return self.policy_citations_json or []
 
 
 class Document(Base):

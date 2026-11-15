@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import time
 from dataclasses import dataclass
 
@@ -10,6 +11,10 @@ from backend.app.schemas.rag import CitationResponse, RagAskResponse
 from backend.app.services.llm import DeepSeekClient
 
 NO_EVIDENCE_ANSWER = "当前知识库中没有足够依据确认这个问题，建议转人工客服进一步核实。"
+_SENSITIVE_QUERY_PATTERNS = (
+    re.compile(r"(列出|返回|查询|导出).{0,12}(全部|所有).{0,8}订单"),
+    re.compile(r"(不要|无需|跳过|绕过).{0,8}(检查|校验).{0,8}(身份|权限)"),
+)
 logger = logging.getLogger(__name__)
 
 
@@ -88,6 +93,15 @@ class RAGService:
         product_id: int | None = None,
         top_k: int | None = None,
     ) -> RAGContext:
+        if is_sensitive_retrieval_query(question):
+            logger.warning("RAG sensitive query refused before retrieval")
+            return RAGContext(
+                evidence="",
+                citations=[],
+                chunks=(),
+                grounded=False,
+            )
+
         started_at = time.perf_counter()
         query_embedding = self.embedder.embed_query(question)
         retrieved = self.vector_store.query(
@@ -139,3 +153,9 @@ class RAGService:
             excerpt=excerpt,
             similarity=round(chunk.similarity, 4),
         )
+
+
+def is_sensitive_retrieval_query(question: str) -> bool:
+    """Reject queries that ask to bypass identity or list cross-user orders."""
+
+    return any(pattern.search(question) for pattern in _SENSITIVE_QUERY_PATTERNS)

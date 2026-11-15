@@ -4,6 +4,8 @@ try:
     from frontend.api_client import ApiClient, ApiError
     from frontend.login_ui import render_login_screen
     from frontend.ui import (
+        after_sales_ticket_status_label,
+        after_sales_ticket_type_label,
         format_timestamp,
         handoff_status_label,
         inject_styles,
@@ -17,6 +19,8 @@ except ModuleNotFoundError:
     from api_client import ApiClient, ApiError
     from login_ui import render_login_screen
     from ui import (
+        after_sales_ticket_status_label,
+        after_sales_ticket_type_label,
         format_timestamp,
         handoff_status_label,
         inject_styles,
@@ -34,7 +38,7 @@ SOURCE_LABELS = {
 }
 
 st.set_page_config(
-    page_title="SmartService AI · 客服工作台",
+    page_title="SmartService AI · 消费电子客服工作台",
     page_icon=":material/support_agent:",
     layout="wide",
 )
@@ -59,11 +63,133 @@ def show_error(error: ApiError) -> None:
     st.error(error.message, title="操作失败")
 
 
+def render_after_sales_ticket_workspace() -> None:
+    try:
+        tickets = client().list_pending_after_sales_tickets()
+    except ApiError as error:
+        show_error(error)
+        return
+
+    ticket_by_id = {ticket["id"]: ticket for ticket in tickets}
+    if st.session_state.get("agent_ticket_id") not in ticket_by_id:
+        st.session_state.agent_ticket_id = tickets[0]["id"] if tickets else None
+    selected_id = st.session_state.get("agent_ticket_id")
+    selected = ticket_by_id.get(selected_id) if selected_id is not None else None
+
+    left, center, right = st.columns([0.2, 0.3, 0.5], gap="medium")
+    with left:
+        with st.container(key="agent-nav"):
+            st.markdown("### :material:support_agent: 工单审批")
+            st.caption("AI 已核验订单和政策，等待人工决定。")
+            if st.button(
+                "返回客服会话",
+                icon=":material/arrow_back:",
+                width="stretch",
+            ):
+                st.session_state.agent_view = "待接管"
+                st.rerun()
+            st.caption(f"待审批 {len(tickets)} 张")
+
+    with center:
+        with st.container(key="agent-list"):
+            st.markdown("### 待审批工单")
+            if not tickets:
+                st.info("当前没有待审批售后工单。", title="审批队列为空")
+            else:
+                for ticket in tickets:
+                    ticket_id = ticket["id"]
+                    is_selected = ticket_id == selected_id
+                    with st.container(key=f"agent-ticket-{ticket_id}"):
+                        if st.button(
+                            ticket["ticket_no"],
+                            key=f"select-agent-ticket-{ticket_id}",
+                            type="primary" if is_selected else "secondary",
+                            width="stretch",
+                        ):
+                            st.session_state.agent_ticket_id = ticket_id
+                            st.rerun()
+                        st.caption(
+                            f"{after_sales_ticket_type_label(ticket['request_type'])}"
+                            f" · {after_sales_ticket_status_label(ticket['status'])}"
+                        )
+                        st.caption(
+                            f"会话 #{ticket['session_id']} · "
+                            f"{format_timestamp(ticket['created_at'])}"
+                        )
+
+    with right:
+        with st.container(key="agent-chat"):
+            if selected is None:
+                st.info("从待审批列表选择一张工单。", title="尚未选择工单")
+                return
+            st.markdown(f"### {selected['ticket_no']}")
+            st.caption(
+                f"{after_sales_ticket_type_label(selected['request_type'])}"
+                f" · {after_sales_ticket_status_label(selected['status'])}"
+            )
+            st.markdown(f"**问题描述**  \n{selected['issue_description']}")
+            st.caption(
+                f"消费者 #{selected['user_id']} · 订单 #{selected['order_id']}"
+                f" · 会话 #{selected['session_id']}"
+            )
+            citations = selected.get("policy_citations") or []
+            if citations:
+                with st.expander("查看政策依据", icon=":material/menu_book:"):
+                    for citation in citations:
+                        st.markdown(
+                            f"**{citation.get('title', '知识片段')}** "
+                            f"· `{citation.get('filename', '')}`"
+                        )
+                        st.caption(citation.get("excerpt", ""))
+
+            review_note = st.text_area(
+                "审批意见",
+                max_chars=500,
+                placeholder="拒绝时必须填写原因；通过时可选填。",
+                key=f"ticket-review-note-{selected['id']}",
+            )
+            approve_column, reject_column = st.columns(2)
+            with approve_column:
+                if st.button(
+                    "通过工单",
+                    icon=":material/task_alt:",
+                    type="primary",
+                    width="stretch",
+                ):
+                    try:
+                        client().review_after_sales_ticket(
+                            selected["id"],
+                            decision="approved",
+                            review_note=review_note.strip(),
+                        )
+                        st.rerun()
+                    except ApiError as error:
+                        show_error(error)
+            with reject_column:
+                if st.button(
+                    "拒绝工单",
+                    icon=":material/cancel:",
+                    width="stretch",
+                ):
+                    if not review_note.strip():
+                        st.warning("拒绝工单时必须填写审批意见。")
+                    else:
+                        try:
+                            client().review_after_sales_ticket(
+                                selected["id"],
+                                decision="rejected",
+                                review_note=review_note.strip(),
+                            )
+                            st.rerun()
+                        except ApiError as error:
+                            show_error(error)
+
+
 if st.session_state.agent_token is None:
     username, password, submitted = render_login_screen(
         role="客服",
         brand_title="SmartService AI",
-        subtitle="统一查看待接管任务、会话上下文与人工回复。",
+        subtitle="统一处理消费电子产品售后任务、会话上下文与人工回复。",
         account_hint="演示账号：agent_demo / Agent123!",
     )
 
@@ -97,6 +223,9 @@ def render_live_workspace() -> None:
         return
 
     view = st.session_state.agent_view
+    if view == "工单审批":
+        render_after_sales_ticket_workspace()
+        return
     handoffs = pending_handoffs if view == "待接管" else my_handoffs
     handoff_by_id = {handoff["id"]: handoff for handoff in handoffs}
     if st.session_state.get("agent_handoff_id") not in handoff_by_id:
@@ -110,7 +239,7 @@ def render_live_workspace() -> None:
         with st.container(key="agent-nav"):
             with st.container(key="brand-block"):
                 st.markdown("### :material/support_agent: SmartService AI")
-                st.caption("客服工作台")
+                st.caption("消费电子客服工作台")
 
             st.markdown("#### 工作队列")
             if st.button(
@@ -130,6 +259,14 @@ def render_live_workspace() -> None:
                 key="agent-nav-mine",
             ):
                 st.session_state.agent_view = "我的会话"
+                st.rerun()
+            if st.button(
+                "工单审批",
+                icon=":material/fact_check:",
+                width="stretch",
+                key="agent-nav-tickets",
+            ):
+                st.session_state.agent_view = "工单审批"
                 st.rerun()
 
             st.caption(":material/sync: 3 秒自动同步")

@@ -41,6 +41,14 @@ _EXPLICIT_RETURN_OR_EXCHANGE_KEYWORDS = {
     "退款",
     "换货",
 }
+_SUBMISSION_QUESTION_PATTERN = re.compile(
+    r"(能不能|可不可以|能否|是否可以|要不要|需不需要|该不该|"
+    r"可以.{0,4}(退|换)|怎么|如何|流程|政策|了解)"
+)
+_SUBMISSION_ACTION_PATTERN = re.compile(
+    r"(申请|提交|办理|发起|确认|帮我|给我|(?:我)?想|(?:我)?要).{0,10}"
+    r"(退货|换货|退款|退换)"
+)
 
 
 def extract_order_no(content: str) -> str | None:
@@ -81,6 +89,12 @@ def merge_slots(
             not in {None, IssueType.ORDER_QUERY.value, IssueType.UNKNOWN.value}
         ):
             candidate = existing_values.get(field_name)
+        if (
+            field_name == "submit_requested"
+            and update_value is False
+            and existing_values.get(field_name) is True
+        ):
+            candidate = True
         if not _has_value(candidate):
             candidate = existing_values.get(field_name)
         if not _has_value(candidate):
@@ -127,7 +141,8 @@ class IntentService:
                             for keyword in ("内存", "接口", "续航", "连接", "清洁", "使用")
                         )
                         else None
-                    )
+                    ),
+                    submit_requested=(True if detect_submission_request(content) is True else None),
                 ),
                 confidence=0,
             )
@@ -141,6 +156,9 @@ class IntentService:
             slots.issue_description.strip()
         ):
             slots = slots.model_copy(update={"issue_description": None})
+        submission_hint = detect_submission_request(content)
+        if submission_hint is not None:
+            slots = slots.model_copy(update={"submit_requested": submission_hint})
         effective_intent = result.intent
         if (
             any(keyword in content for keyword in _PRODUCT_USAGE_KEYWORDS)
@@ -195,3 +213,14 @@ def _fallback_intent(content: str) -> AfterSalesIntent:
     ):
         return AfterSalesIntent.AFTER_SALES_POLICY
     return AfterSalesIntent.UNKNOWN
+
+
+def detect_submission_request(content: str) -> bool | None:
+    """Distinguish an actual return/exchange request from an inquiry."""
+
+    normalized = content.strip()
+    if _SUBMISSION_QUESTION_PATTERN.search(normalized):
+        return False
+    if _SUBMISSION_ACTION_PATTERN.search(normalized):
+        return True
+    return None

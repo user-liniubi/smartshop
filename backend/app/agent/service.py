@@ -24,8 +24,11 @@ from backend.app.agent.tools import (
 from backend.app.core.config import Settings
 from backend.app.core.exceptions import AppError
 from backend.app.models import (
+    AfterSalesTicket,
+    AfterSalesTicketType,
     ChatSession,
     HandoffSource,
+    Order,
     SenderType,
     SessionStatus,
     WorkflowState,
@@ -36,8 +39,10 @@ from backend.app.repositories.chat import (
     list_messages,
 )
 from backend.app.repositories.handoffs import get_handoff_by_session
+from backend.app.schemas.after_sales import AfterSalesTicketResponse
 from backend.app.schemas.chat import ChatMessageResponse, ChatTurnResponse
 from backend.app.schemas.handoff import HandoffResponse
+from backend.app.services.after_sales_tickets import AfterSalesTicketService
 from backend.app.services.answers import AnswerService
 from backend.app.services.handoffs import HandoffService
 from backend.app.services.llm import DeepSeekClient
@@ -339,11 +344,51 @@ class AfterSalesAgentService:
                 ],
             )
 
+        ticket: AfterSalesTicket | None = None
+        ticket_created = False
+        if (
+            intent_result.intent
+            in {
+                AfterSalesIntent.RETURN_REQUEST,
+                AfterSalesIntent.EXCHANGE_REQUEST,
+            }
+            and intent_result.slots.submit_requested is True
+        ):
+            order_id = order_facts.get("order_id")
+            issue_description = intent_result.slots.issue_description
+            if not isinstance(order_id, int) or not issue_description:
+                raise AppError(
+                    status_code=500,
+                    code="after_sales_ticket_context_missing",
+                    message="售后工单缺少订单或问题信息",
+                )
+            order = self.session.get(Order, order_id)
+            if order is None:
+                raise AppError(
+                    status_code=404,
+                    code="order_not_found",
+                    message="订单不存在",
+                )
+            request_type = (
+                AfterSalesTicketType.RETURN
+                if intent_result.intent == AfterSalesIntent.RETURN_REQUEST
+                else AfterSalesTicketType.EXCHANGE
+            )
+            ticket, ticket_created = AfterSalesTicketService(self.session).create_for_session(
+                chat_session=chat_session,
+                order=order,
+                request_type=request_type,
+                issue_description=issue_description,
+                citations=rag_context.citations,
+            )
+
         return self._finish_with_answer(
             chat_session=chat_session,
             user_message=user_message,
             answer=rule_decision.answer,
             rag_context=rag_context,
+            after_sales_ticket=ticket,
+            ticket_created=ticket_created,
             tool_results=[
                 ToolResultSummary(
                     tool_name=tool_result.tool_name,
@@ -477,6 +522,8 @@ class AfterSalesAgentService:
         answer: str,
         rag_context: RAGContext,
         tool_results: list[ToolResultSummary] | None = None,
+        after_sales_ticket: AfterSalesTicket | None = None,
+        ticket_created: bool = False,
     ) -> ChatTurnResponse:
         if not self._ai_reply_allowed(chat_session):
             return self._waiting_for_agent_response(
@@ -489,6 +536,17 @@ class AfterSalesAgentService:
                 chat_session=chat_session,
                 target=WorkflowState.ANSWER_READY,
             )
+        if after_sales_ticket is not None:
+            if ticket_created:
+                answer = (
+                    f"{answer}\n\n已完成订单和政策核验，售后工单 "
+                    f"{after_sales_ticket.ticket_no} 已创建，当前等待人工审批。"
+                )
+            else:
+                answer = (
+                    f"{answer}\n\n当前会话已关联售后工单 "
+                    f"{after_sales_ticket.ticket_no}，请勿重复提交。"
+                )
         assistant_message = add_message(
             self.session,
             session_id=chat_session.id,
@@ -505,9 +563,16 @@ class AfterSalesAgentService:
         return ChatTurnResponse(
             user_message=ChatMessageResponse.model_validate(user_message),
             assistant_message=ChatMessageResponse.model_validate(assistant_message),
-            action=ConversationAction.ANSWER,
+            action=(
+                ConversationAction.TICKET_CREATED if ticket_created else ConversationAction.ANSWER
+            ),
             workflow_state=WorkflowState(chat_session.workflow_state),
             tool_results=tool_results or [],
+            after_sales_ticket=(
+                AfterSalesTicketResponse.model_validate(after_sales_ticket)
+                if after_sales_ticket is not None
+                else None
+            ),
         )
 
     def _create_handoff_turn(

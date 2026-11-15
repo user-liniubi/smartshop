@@ -8,7 +8,13 @@ from backend.app.agent.schemas import ConversationAction
 from backend.app.agent.service import AfterSalesAgentService
 from backend.app.core.config import Settings
 from backend.app.core.exceptions import AppError
-from backend.app.models import ChatSession, ToolInvocation, User, WorkflowState
+from backend.app.models import (
+    AfterSalesTicket,
+    ChatSession,
+    ToolInvocation,
+    User,
+    WorkflowState,
+)
 from backend.app.repositories.chat import list_messages
 from backend.app.schemas.rag import CitationResponse
 from backend.app.services.handoffs import HandoffService
@@ -207,14 +213,16 @@ def test_three_turn_return_flow_combines_order_facts_and_policy(
         )
         invocation = session.scalar(select(ToolInvocation))
         task = session.get(ChatSession, session_id)
+        ticket = session.scalar(select(AfterSalesTicket))
 
     assert first.action == ConversationAction.ASK_MORE_INFO
     assert set(first.missing_slots) == {"order_no", "issue_description"}
     assert second.action == ConversationAction.ASK_MORE_INFO
     assert second.missing_slots == ["issue_description"]
-    assert third.action == ConversationAction.ANSWER
+    assert third.action == ConversationAction.TICKET_CREATED
     assert third.assistant_message is not None
     assert "delivered" in third.assistant_message.content
+    assert "待人工审批" in third.assistant_message.content
     assert third.assistant_message.citations_json[0]["filename"] == ("warranty_policy.md")
     assert third.tool_results[0].result["order_no"] == "A10086"
     assert invocation is not None
@@ -224,6 +232,38 @@ def test_three_turn_return_flow_combines_order_facts_and_policy(
     assert task.workflow_state == WorkflowState.RESOLVED.value
     assert task.slots_json["product_id"] == 1
     assert rag.requests[0]["product_id"] == 1
+    assert ticket is not None
+    assert ticket.status == "pending_approval"
+    assert ticket.request_type == "return"
+    assert ticket.issue_description == "左耳没有声音"
+    assert third.after_sales_ticket is not None
+    assert third.after_sales_ticket.ticket_no == ticket.ticket_no
+
+
+def test_policy_question_does_not_create_after_sales_ticket(
+    seeded_client,
+    test_database,
+):
+    user_id, session_id = create_agent_session(test_database)
+
+    with test_database.session_factory() as session:
+        service = AfterSalesAgentService(
+            session=session,
+            settings=Settings(_env_file=None),
+            llm=FakeAgentLLM(),
+            rag_service=FakeRagService(),
+        )
+        response = run_message(
+            service,
+            user_id=user_id,
+            session_id=session_id,
+            content="支持七天无理由退货吗？",
+        )
+        ticket = session.scalar(select(AfterSalesTicket))
+
+    assert response.action == ConversationAction.ANSWER
+    assert response.after_sales_ticket is None
+    assert ticket is None
 
 
 def test_other_users_order_is_not_exposed_and_can_be_retried(

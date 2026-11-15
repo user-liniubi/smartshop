@@ -179,6 +179,7 @@ class ToolRegistry:
             user_id=context.user_id,
         )
         return {
+            "order_id": order.id,
             "order_no": order.order_no,
             "status": order.status,
             "product_id": order.product.id,

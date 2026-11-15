@@ -11,10 +11,35 @@ DEMO_KNOWLEDGE_DOCUMENTS = (
     DemoKnowledgeDocument("return_policy.md"),
     DemoKnowledgeDocument("warranty_policy.md"),
     DemoKnowledgeDocument("shipping_faq.md"),
+    DemoKnowledgeDocument("after_sales_process.md"),
+    DemoKnowledgeDocument("delivery_damage.md"),
+    DemoKnowledgeDocument("order_change_and_cancellation.md"),
+    DemoKnowledgeDocument("privacy_and_evidence_guide.md"),
     DemoKnowledgeDocument("after_sales_faq.pdf"),
+    DemoKnowledgeDocument("after_sales_faq_source.txt"),
     DemoKnowledgeDocument("headphones_manual.md", "SmartShop 降噪耳机 Pro"),
+    DemoKnowledgeDocument(
+        "headphones_troubleshooting.md",
+        "SmartShop 降噪耳机 Pro",
+    ),
     DemoKnowledgeDocument("keyboard_manual.md", "SmartShop 机械键盘 K87"),
+    DemoKnowledgeDocument(
+        "keyboard_troubleshooting.md",
+        "SmartShop 机械键盘 K87",
+    ),
     DemoKnowledgeDocument("monitor_manual.md", "SmartShop 27 英寸显示器"),
+    DemoKnowledgeDocument(
+        "monitor_troubleshooting.md",
+        "SmartShop 27 英寸显示器",
+    ),
     DemoKnowledgeDocument("laptop_manual.md", "SmartShop 14 英寸笔记本"),
+    DemoKnowledgeDocument(
+        "laptop_troubleshooting.md",
+        "SmartShop 14 英寸笔记本",
+    ),
     DemoKnowledgeDocument("mouse_manual.md", "SmartShop 无线鼠标 M2"),
+    DemoKnowledgeDocument(
+        "mouse_troubleshooting.md",
+        "SmartShop 无线鼠标 M2",
+    ),
 )

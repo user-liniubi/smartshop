@@ -8,6 +8,7 @@ try:
         format_timestamp,
         inject_styles,
         message_summary,
+        render_after_sales_ticket,
         render_message,
         render_order_card,
         render_session_meta,
@@ -22,6 +23,7 @@ except ModuleNotFoundError:
         format_timestamp,
         inject_styles,
         message_summary,
+        render_after_sales_ticket,
         render_message,
         render_order_card,
         render_session_meta,
@@ -30,7 +32,7 @@ except ModuleNotFoundError:
     )
 
 st.set_page_config(
-    page_title="SmartShop 售后客服",
+    page_title="SmartShop 消费电子售后客服",
     page_icon=":material/support_agent:",
     layout="wide",
 )
@@ -57,7 +59,7 @@ if st.session_state.consumer_token is None:
     username, password, submitted = render_login_screen(
         role="消费者",
         brand_title="SmartService AI",
-        subtitle="从已有订单开始，把退货、换货、保修和订单问题一次处理好。",
+        subtitle="面向消费电子产品，从已有订单开始处理退货、换货、保修和产品使用问题。",
         account_hint="演示账号：consumer_demo / Demo123!",
     )
 
@@ -81,6 +83,7 @@ inject_styles()
 def render_live_workspace() -> None:
     try:
         sessions = client().list_sessions()
+        after_sales_tickets = client().list_my_after_sales_tickets()
     except ApiError as error:
         show_error(error)
         return
@@ -90,7 +93,7 @@ def render_live_workspace() -> None:
         with left:
             with st.container(key="sm-nav"):
                 st.markdown("### :material/support_agent: SmartService AI")
-                st.caption("智能售后客服")
+                st.caption("消费电子售后")
                 if st.button("新建会话", icon=":material/add:", width="stretch"):
                     created = client().create_session()
                     st.session_state.consumer_session_id = created["id"]
@@ -128,13 +131,17 @@ def render_live_workspace() -> None:
     selected_id = st.session_state.consumer_session_id
     selected = session_by_id[selected_id]
     messages = session_messages[selected_id]
+    selected_ticket = next(
+        (ticket for ticket in after_sales_tickets if ticket["session_id"] == selected_id),
+        None,
+    )
 
     left, center, right = st.columns([0.22, 0.54, 0.24], gap="medium")
     with left:
         with st.container(key="sm-nav"):
             with st.container(key="brand-block"):
                 st.markdown("### :material/support_agent: SmartService AI")
-                st.caption("智能售后客服")
+                st.caption("消费电子售后")
             if st.button(
                 "新建会话",
                 icon=":material/add:",
@@ -184,7 +191,7 @@ def render_live_workspace() -> None:
             with st.container(horizontal=True, horizontal_alignment="distribute"):
                 st.markdown("### :material/auto_awesome: SmartService AI")
                 st.markdown(":green-badge[在线]")
-            st.caption("订单查询、售后政策与人工客服协同处理")
+            st.caption("消费电子产品订单、售后政策与人工客服协同处理")
 
             status = selected["status"]
             if status == "need_human":
@@ -204,7 +211,7 @@ def render_live_workspace() -> None:
                 if not messages:
                     with st.container(key="welcome-card"):
                         st.markdown("### 你好，我是 SmartService AI")
-                        st.write("告诉我订单号和遇到的问题，我会核验订单并检索售后政策。")
+                        st.write("告诉我订单号和消费电子产品的问题，我会核验订单并检索售后政策。")
                     st.caption("你可以从下面几个问题开始：")
                     suggestions = (
                         ("耳机坏了怎么退货？", "耳机坏了，想退货"),
@@ -272,6 +279,8 @@ def render_live_workspace() -> None:
                 except ApiError:
                     order = None
             render_order_card(order)
+            st.space("medium")
+            render_after_sales_ticket(selected_ticket)
             st.space("medium")
             render_session_meta(selected)
             st.space("medium")

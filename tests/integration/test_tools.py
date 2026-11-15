@@ -41,6 +41,7 @@ def test_get_my_order_returns_safe_owned_order_facts(
         invocation = session.scalar(select(ToolInvocation))
 
     assert result.result == {
+        "order_id": 1,
         "order_no": "A10086",
         "status": "delivered",
         "product_id": 1,

@@ -66,3 +66,15 @@ class HandoffSource(StrEnum):
     USER = "user"
     AI = "ai"
     RULE = "rule"
+
+
+class AfterSalesTicketType(StrEnum):
+    RETURN = "return"
+    EXCHANGE = "exchange"
+
+
+class AfterSalesTicketStatus(StrEnum):
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"

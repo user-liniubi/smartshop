@@ -139,6 +139,18 @@ HANDOFF_STATUS_LABELS = {
     "closed": "已关闭",
 }
 
+AFTER_SALES_TICKET_STATUS_LABELS = {
+    "pending_approval": "待审批",
+    "approved": "已通过",
+    "rejected": "已拒绝",
+    "cancelled": "已取消",
+}
+
+AFTER_SALES_TICKET_TYPE_LABELS = {
+    "return": "退货",
+    "exchange": "换货",
+}
+
 
 def inject_styles() -> None:
     st.html(APP_CSS)
@@ -164,6 +176,14 @@ def workflow_label(value: str) -> str:
 
 def handoff_status_label(value: str) -> str:
     return HANDOFF_STATUS_LABELS.get(value, value)
+
+
+def after_sales_ticket_status_label(value: str) -> str:
+    return AFTER_SALES_TICKET_STATUS_LABELS.get(value, value)
+
+
+def after_sales_ticket_type_label(value: str) -> str:
+    return AFTER_SALES_TICKET_TYPE_LABELS.get(value, value)
 
 
 def derive_session_title(messages: list[dict[str, Any]], session_id: int) -> str:
@@ -242,3 +262,18 @@ def render_session_meta(
     if session.get("intent"):
         st.caption(f"识别意图：{session['intent']}")
     st.caption(f"创建时间：{format_timestamp(session.get('created_at'))}")
+
+
+def render_after_sales_ticket(ticket: dict[str, Any] | None) -> None:
+    st.markdown("#### 售后工单")
+    if not ticket:
+        st.caption("当前会话尚未生成售后工单")
+        return
+    st.markdown(f"**{ticket['ticket_no']}**")
+    st.caption(
+        f"{after_sales_ticket_type_label(ticket['request_type'])} · "
+        f"{after_sales_ticket_status_label(ticket['status'])}"
+    )
+    st.caption(ticket.get("issue_description", ""))
+    if ticket.get("review_note"):
+        st.caption(f"审批意见：{ticket['review_note']}")
