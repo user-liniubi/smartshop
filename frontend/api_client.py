@@ -52,6 +52,17 @@ class ApiClient:
     def get_order_by_number(self, order_no: str) -> dict[str, Any]:
         return self._request("GET", f"/orders/by-number/{order_no}")
 
+    def list_my_orders(self, limit: int = 10) -> list[dict[str, Any]]:
+        return self._request("GET", f"/orders/mine?limit={limit}")
+
+    def select_order(self, session_id: int, order_id: int) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/chat/sessions/{session_id}/order-selection",
+            json={"order_id": order_id},
+            timeout=120,
+        )
+
     def send_message(self, session_id: int, content: str) -> dict[str, Any]:
         return self._request(
             "POST",
@@ -69,6 +80,12 @@ class ApiClient:
 
     def list_my_after_sales_tickets(self) -> list[dict[str, Any]]:
         return self._request("GET", "/after-sales/tickets/mine")
+
+    def get_after_sales_ticket_events(self, ticket_id: int) -> list[dict[str, Any]]:
+        return self._request("GET", f"/after-sales/tickets/{ticket_id}/events")
+
+    def cancel_after_sales_ticket(self, ticket_id: int) -> dict[str, Any]:
+        return self._request("POST", f"/after-sales/tickets/{ticket_id}/cancel")
 
     def list_pending_after_sales_tickets(self) -> list[dict[str, Any]]:
         return self._request("GET", "/agent/after-sales/tickets")

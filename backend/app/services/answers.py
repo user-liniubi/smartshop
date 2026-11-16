@@ -1,5 +1,6 @@
 from typing import Any
 
+from backend.app.services.after_sales_eligibility import AfterSalesEligibility
 from backend.app.services.llm import DeepSeekClient
 from backend.app.services.rag import RAGContext
 
@@ -16,6 +17,7 @@ class AnswerService:
         order_facts: dict[str, Any] | None,
         rag_context: RAGContext,
         history: list[dict[str, str]],
+        eligibility: AfterSalesEligibility | None,
     ) -> str:
         return await self.llm.generate_agent_answer(
             question=question,
@@ -23,4 +25,9 @@ class AnswerService:
             order_facts=order_facts,
             evidence=rag_context.evidence,
             history=history,
+            eligibility=(
+                eligibility.to_response().model_dump(mode="json")
+                if eligibility is not None
+                else None
+            ),
         )

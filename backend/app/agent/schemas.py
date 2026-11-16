@@ -37,6 +37,7 @@ class SlotUpdate(BaseModel):
         max_length=32,
         pattern=r"^[A-Za-z0-9_-]+$",
     )
+    order_reference: str | None = Field(default=None, min_length=1, max_length=100)
     issue_type: IssueType | None = None
     issue_description: str | None = Field(
         default=None,
@@ -45,7 +46,7 @@ class SlotUpdate(BaseModel):
     )
     submit_requested: bool | None = None
 
-    @field_validator("order_no", "issue_description", mode="before")
+    @field_validator("order_no", "order_reference", "issue_description", mode="before")
     @classmethod
     def empty_string_to_none(cls, value: object) -> object:
         if isinstance(value, str):
@@ -69,6 +70,7 @@ class IntentResult(BaseModel):
 
 class WorkflowAction(StrEnum):
     ASK_MORE_INFO = "ask_more_info"
+    SELECT_ORDER = "select_order"
     QUERY_ORDER = "query_order"
     RETRIEVE_POLICY = "retrieve_policy"
     HANDOFF = "handoff"
@@ -121,6 +123,7 @@ class ToolResultSummary(BaseModel):
 
 class ConversationAction(StrEnum):
     ASK_MORE_INFO = "ask_more_info"
+    SELECT_ORDER = "select_order"
     ANSWER = "answer"
     TICKET_CREATED = "ticket_created"
     HANDOFF_CREATED = "handoff_created"

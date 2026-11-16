@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -9,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -23,6 +25,7 @@ from backend.app.models.enums import (
     HandoffStatus,
     IngestionJobStatus,
     KnowledgeDocumentStatus,
+    OrderSelectionState,
     OrderStatus,
     SenderType,
     SessionStatus,
@@ -99,6 +102,25 @@ class Order(Base):
         String(20),
         default=OrderStatus.PENDING.value,
     )
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    paid_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0.00"),
+        server_default="0.00",
+    )
+    shipping_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0.00"),
+        server_default="0.00",
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3),
+        default="CNY",
+        server_default="CNY",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -120,9 +142,13 @@ class ChatSession(Base):
         ),
         CheckConstraint(
             "workflow_state IN "
-            "('collecting_info', 'checking_order', 'checking_policy', "
+            "('collecting_info', 'awaiting_order_selection', 'checking_order', 'checking_policy', "
             "'answer_ready', 'need_human', 'resolved')",
             name="valid_workflow_state",
+        ),
+        CheckConstraint(
+            "order_selection_state IN ('none', 'awaiting_selection', 'selected')",
+            name="valid_order_selection_state",
         ),
     )
 
@@ -137,6 +163,21 @@ class ChatSession(Base):
     )
     intent: Mapped[str | None] = mapped_column(String(50), nullable=True)
     slots_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    selected_order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    candidate_order_ids_json: Mapped[list[int]] = mapped_column(JSON, default=list)
+    order_selection_state: Mapped[str] = mapped_column(
+        String(24),
+        default=OrderSelectionState.NONE.value,
+        server_default=OrderSelectionState.NONE.value,
+    )
+    control_version: Mapped[int] = mapped_column(
+        default=0,
+        server_default="0",
+    )
     workflow_state: Mapped[str] = mapped_column(
         String(32),
         default=WorkflowState.COLLECTING_INFO.value,
@@ -153,6 +194,7 @@ class ChatSession(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="chat_sessions")
+    selected_order: Mapped[Order | None] = relationship(foreign_keys=[selected_order_id])
     messages: Mapped[list[ChatMessage]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
@@ -298,6 +340,11 @@ class AfterSalesTicket(Base):
             "status IN ('pending_approval', 'approved', 'rejected', 'cancelled')",
             name="valid_status",
         ),
+        CheckConstraint(
+            "eligibility_result IS NULL OR "
+            "eligibility_result IN ('eligible', 'need_human_review', 'not_eligible')",
+            name="valid_eligibility_result",
+        ),
         Index(
             "ix_after_sales_tickets_status_created_at",
             "status",
@@ -325,6 +372,27 @@ class AfterSalesTicket(Base):
         JSON,
         default=list,
     )
+    eligibility_result: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+    eligibility_reason: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    refund_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3),
+        default="CNY",
+        server_default="CNY",
+    )
+    rule_version: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
     status: Mapped[str] = mapped_column(
         String(32),
         default=AfterSalesTicketStatus.PENDING_APPROVAL.value,
@@ -338,6 +406,20 @@ class AfterSalesTicket(Base):
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
+    )
+    active_dedup_key: Mapped[str | None] = mapped_column(
+        String(128),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    cancelled_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -360,10 +442,56 @@ class AfterSalesTicket(Base):
         back_populates="reviewed_after_sales_tickets",
         foreign_keys=[reviewer_id],
     )
+    cancelled_by: Mapped[User | None] = relationship(foreign_keys=[cancelled_by_id])
+    events: Mapped[list[AfterSalesTicketEvent]] = relationship(
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="AfterSalesTicketEvent.created_at, AfterSalesTicketEvent.id",
+    )
 
     @property
     def policy_citations(self) -> list[dict[str, Any]]:
         return self.policy_citations_json or []
+
+
+class AfterSalesTicketEvent(Base):
+    __tablename__ = "after_sales_ticket_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('created', 'approved', 'rejected', 'cancelled', 'system_note')",
+            name="valid_event_type",
+        ),
+        CheckConstraint(
+            "actor_type IN ('consumer', 'agent', 'system')",
+            name="valid_actor_type",
+        ),
+        Index(
+            "ix_after_sales_ticket_events_ticket_id_created_at",
+            "ticket_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(
+        ForeignKey("after_sales_tickets.id", ondelete="CASCADE"),
+    )
+    event_type: Mapped[str] = mapped_column(String(32))
+    from_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    to_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    actor_type: Mapped[str] = mapped_column(String(20))
+    actor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    ticket: Mapped[AfterSalesTicket] = relationship(back_populates="events")
+    actor: Mapped[User | None] = relationship(foreign_keys=[actor_id])
 
 
 class Document(Base):

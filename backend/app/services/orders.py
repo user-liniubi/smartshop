@@ -5,6 +5,7 @@ from backend.app.models import Order
 from backend.app.repositories.orders import (
     get_order_owned_by_user,
     get_order_owned_by_user_and_no,
+    list_recent_orders_owned_by_user,
 )
 
 
@@ -39,3 +40,10 @@ class OrderService:
                 message="订单不存在",
             )
         return order
+
+    def list_recent_for_user(self, *, user_id: int, limit: int = 10) -> list[Order]:
+        return list_recent_orders_owned_by_user(
+            self.session,
+            user_id=user_id,
+            limit=max(1, min(limit, 20)),
+        )

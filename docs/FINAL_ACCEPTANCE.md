@@ -164,3 +164,56 @@ p95_latency_ms=1315.19
 ```
 
 新增资料经过真实 BGE + Chroma 检索抽样，键盘进液、显示器无信号、笔记本电池异常、外包装破损、送修数据备份和鼠标双击等问题均能命中对应资料。该结果仍是固定演示集验证，不代表生产泛化准确率。
+
+## P0 售后能力增强补充验收
+
+> 验收日期：2026-11-16
+> 起始代码：`b94c38e`
+> 详细说明：[P0_AFTER_SALES_ENHANCEMENT.md](P0_AFTER_SALES_ENHANCEMENT.md)
+
+本轮新增多订单安全选择、订单切换重检、确定性售后资格和金额快照、跨会话活动工单幂等、消费者取消、工单事件、控制权版本与业务副作用竞态修复。
+
+实际自动化结果：
+
+```text
+uv run pytest -q
+126 passed in 79.83s
+
+ruff check .
+All checks passed!
+
+ruff format --check .
+171 files already formatted
+```
+
+新增迁移链：
+
+```text
+8b2d7f4c1a90 -> 2c4e6a8b1d30 -> 5e7a9c1d3b42 -> 7f9b2d4c6e81 (head)
+```
+
+P0 收尾后使用独立 SQLite、真实 DeepSeek 和本地 Chroma 重新执行 31 条固定评测：
+
+```text
+case_count=31
+intent_accuracy=1.0
+order_no_extraction_accuracy=1.0
+action_accuracy=1.0
+tool_behavior_accuracy=1.0
+rag_hit_at_3=1.0
+rag_hit_at_5=1.0
+no_evidence_refusal_rate=1.0
+task_success_rate=1.0
+p50_latency_ms=1034.66
+p95_latency_ms=1433.96
+```
+
+P0 收尾时使用独立 MySQL 8.0 临时实例实际执行了全部迁移和种子数据：
+
+```text
+alembic current: 7f9b2d4c6e81 (head)
+alembic check: No new upgrade operations detected
+seed: users=3, products=5, orders=5
+```
+
+已确认 `chat_sessions`、`orders`、`after_sales_tickets` 新字段以及 `after_sales_ticket_events` 表真实存在。

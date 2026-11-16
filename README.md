@@ -4,7 +4,7 @@ SmartShop AI 是一个面向消费电子产品售后场景的单商家智能客�
 
 > 技术定位：高级 RAG 应用 + 受控业务工作流 + 有限 Tool Calling。模型辅助意图、槽位和答案生成，流程、权限和异常由后端控制；项目不是自主多步 Agent。
 
-当前已完成 FastAPI 后端、MySQL 数据层、DeepSeek 受控 Tool Calling、售后 RAG、多轮状态机、订单与政策组合、退换货工单自动创建与人工审批、故障降级、人工申请、客服原子接管/回复/关闭、消费者端与客服工作台、31 条固定场景评测、请求级观测、异步文档索引和双存储删除。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准。
+当前已完成 FastAPI 后端、MySQL 数据层、DeepSeek 受控 Tool Calling、售后 RAG、多轮状态机、多订单候选与安全切换、确定性售后资格和金额快照、退换货工单自动创建、工单事件、消费者取消、人工审批、故障降级、客服原子接管/回复/关闭、消费者端与客服工作台、31 条固定场景评测、请求级观测、异步文档索引和双存储删除。P0 收尾后自动化测试为 126 项，固定评测集本次实测为 31/31。后续开发路线以 [售后闭环开发手册 V2](docs/开发手册-售后闭环V2.md) 为准，P0 增量说明见 [P0 售后能力增强报告](docs/P0_AFTER_SALES_ENHANCEMENT.md)，演示测评见 [P0_DEMO_EVALUATION.md](docs/P0_DEMO_EVALUATION.md)。
 
 架构、状态流转和人工接管的详细设计见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)，技术亮点和面试源码证据见 [INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md)。
 
@@ -105,7 +105,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | `RAG_TOP_K` | `4` | 默认检索数量 |
 | `RAG_MIN_SIMILARITY` | `0.5` | 无依据拒答的相似度阈值 |
 | `AGENT_MAX_TOOL_ROUNDS` | `2` | 售后工作流工具轮数配置；当前主链只执行有限工具调用 |
-| `AGENT_TOTAL_TIMEOUT_SECONDS` | `60` | 单次售后工作流处理总超时 |
+| `AGENT_TOTAL_TIMEOUT_SECONDS` | `180` | 单次售后工作流处理总超时，覆盖 BGE 首次冷加载 |
 
 Streamlit 前端默认连接 `http://127.0.0.1:8000`，可以通过启动前设置 `SMARTSHOP_API_URL` 覆盖。
 
@@ -155,14 +155,15 @@ uv run python -m sample_data.seed
 
 - `users`：消费者与客服账号
 - `products`：演示商品
-- `orders`：带用户归属的虚构订单
-- `chat_sessions`：会话状态与槽位
+- `orders`：带用户归属、签收时间和金额快照的虚构订单
+- `chat_sessions`：会话状态、槽位、候选订单、当前订单和控制权版本
 - `chat_messages`：对话消息
 - `handoffs`：人工接管记录
 - `documents`：知识文件与索引状态
 - `document_chunks`：Chunk 文本、页码、标题和向量 ID 映射
 - `ingestion_jobs`：异步索引任务状态、进度和结果
-- `after_sales_tickets`：退换货工单、政策依据、审批状态和审批人
+- `after_sales_tickets`：退换货工单、资格结果、金额快照、审批状态和审批人
+- `after_sales_ticket_events`：工单创建、审批、驳回和取消的操作时间线
 
 ## 登录与订单接口
 
@@ -180,17 +181,18 @@ $login = Invoke-RestMethod `
 
 ```powershell
 $headers = @{ Authorization = "Bearer $($login.access_token)" }
+Invoke-RestMethod -Uri http://127.0.0.1:8000/orders/mine -Headers $headers
 Invoke-RestMethod -Uri http://127.0.0.1:8000/orders/1 -Headers $headers
 Invoke-RestMethod -Uri http://127.0.0.1:8000/orders/by-number/A10086 -Headers $headers
 ```
 
-订单查询支持内部订单 ID 和业务订单号两种入口，并且都会与认证用户 ID 联合过滤。其他消费者访问 `consumer_demo` 的订单时返回 `404 order_not_found`，不泄露订单是否存在。Token 具有签名和过期时间，用户被删除或角色变化后，旧 Token 也会失效。
+订单查询支持最近订单列表、内部订单 ID 和业务订单号，并且都会与认证用户 ID 联合过滤。其他消费者访问 `consumer_demo` 的订单时返回 `404 order_not_found`，不泄露订单是否存在。Token 具有签名和过期时间，用户被删除或角色变化后，旧 Token 也会失效。
 
 聊天主链已接入受控订单工具 `get_my_order`。模型只能选择白名单工具和业务参数，当前用户身份由服务端注入，调用参数、脱敏结果、状态和耗时写入 `tool_invocations`。订单不属于当前用户时统一返回“订单不存在”，不会泄露他人订单。
 
 意图与槽位使用 DeepSeek JSON 输出提取，并通过 Pydantic 校验；订单号同时使用确定性正则兜底。已有退货/换货任务在只补充订单号时不会被 `order_query` 覆盖，空值也不会清除已知槽位。
 
-售后编排器负责后端权威工作流状态。订单事实只来自 MySQL，退换货和保修规则只来自 RAG；模型不得补写订单状态或承诺退款。无政策依据、订单状态异常、模型故障和人工请求会创建 pending handoff。
+售后编排器负责后端权威工作流状态。订单事实只来自 MySQL；模型只提取“昨天那一笔”“另一笔”等指代线索，候选订单和最终归属由后端确定性解析。多候选时系统展示候选并要求用户选择，切换订单后重新查询订单、检索政策并执行资格校验。售后期限、质保月份和金额规则由 `AfterSalesEligibilityService` 确定性计算，模型只能解释结果，不能补写订单状态、期限、金额或承诺退款。
 
 ## 知识库与 RAG
 
@@ -247,6 +249,7 @@ POST /api/v1/rag/ask
 |---|---|---|
 | POST | `/chat/sessions` | 创建当前用户的会话 |
 | POST | `/chat/sessions/{id}/messages` | 执行意图、工具、RAG 和规则编排 |
+| POST | `/chat/sessions/{id}/order-selection` | 从当前用户候选订单中确认目标订单并继续处理 |
 | GET | `/chat/sessions/{id}/messages` | 读取本人会话历史 |
 | POST | `/chat/sessions/{id}/handoff` | 幂等申请人工客服 |
 | GET | `/agent/handoffs` | 客服查看 pending 待接管队列 |
@@ -260,28 +263,32 @@ POST /api/v1/rag/ask
 
 ### 售后工单
 
-当用户明确表达“申请退货”“办理换货”等提交诉求，并且订单信息、故障描述和政策审核均通过时，系统会自动生成一张 `pending_approval` 工单，不需要人工重复录入订单和问题。
+当用户明确表达“申请退货”“办理换货”等提交诉求，并且订单、政策证据和确定性资格均通过时，系统会在调用回答模型前生成一张 `pending_approval` 工单。这样即使回答生成超时，已通过核验的诉求也不会丢失。
 
 如果用户只是询问“能不能退”或“退货政策是什么”，系统只回答政策，不会创建工单。
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | GET | `/after-sales/tickets/mine` | 消费者查看自己的售后工单 |
+| GET | `/after-sales/tickets/{id}` | 消费者查看自己的工单详情 |
+| GET | `/after-sales/tickets/{id}/events` | 消费者查看自己的工单处理时间线 |
+| POST | `/after-sales/tickets/{id}/cancel` | 消费者取消待审批工单 |
 | GET | `/agent/after-sales/tickets` | 客服查看待审批工单 |
 | POST | `/agent/after-sales/tickets/{id}/review` | 客服通过或拒绝工单 |
 
-工单与聊天会话一对一关联，重复提交会返回同一张工单。审批使用条件更新，两个客服同时审批时只有一个成功。审批通过只代表内部工单审核完成，不执行真实退款、换货或物流操作。
+工单与聊天会话一对一关联，同一用户的订单和申请类型还有活动工单幂等键，跨会话重复申请也会被拦截。消费者只能取消自己的 `pending_approval` 工单。审批使用条件更新，两个客服真正并发审批时只有一个成功。状态更新、事件记录和消费者可见系统消息在同一事务提交。审批通过只代表内部工单审核完成，不执行真实退款、换货或物流操作。
 
 聊天响应除消息外还包含：
 
-- `action`：`ask_more_info`、`answer`、`ticket_created`、`handoff_created` 或 `waiting_for_agent`
+- `action`：`ask_more_info`、`select_order`、`answer`、`ticket_created`、`handoff_created` 或 `waiting_for_agent`
 - `workflow_state`
 - `missing_slots`
 - `tool_results`
+- `eligibility`
 - `handoff`
 
 会话进入 `need_human` 后，新的消费者消息仍会保存，但 AI 不再自动生成回复。
-客服接管使用带 `status='pending'` 条件的单条 UPDATE；两个客服同时接管时只有一个成功。AI 在保存回复前会重新检查会话状态，接管后到达的模型回复会被丢弃。
+客服接管使用带 `status='pending'` 条件的单条 UPDATE；两个客服同时接管时只有一个成功。接管会递增会话的 `control_version`。AI 在建单、保存追问和保存回答前都检查控制权版本，接管后不会继续产生 AI 消息或新工单副作用。
 
 消费者端和客服工作台使用 Streamlit Fragment 每 3 秒局部同步一次；会话状态、人工消息、待接管队列和客服上下文会自动更新，无需整页刷新。
 

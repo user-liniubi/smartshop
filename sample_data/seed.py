@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -41,6 +43,14 @@ DEMO_ORDERS = (
     ("A10090", "consumer_other", "SmartShop 无线鼠标 M2", OrderStatus.DELIVERED),
 )
 
+DEMO_PRODUCT_PRICES = {
+    "SmartShop 降噪耳机 Pro": Decimal("899.00"),
+    "SmartShop 机械键盘 K87": Decimal("499.00"),
+    "SmartShop 27 英寸显示器": Decimal("1599.00"),
+    "SmartShop 14 英寸笔记本": Decimal("5299.00"),
+    "SmartShop 无线鼠标 M2": Decimal("199.00"),
+}
+
 
 def seed_demo_data(session: Session) -> dict[str, int]:
     """Insert or reuse demo records and return current table counts."""
@@ -69,6 +79,9 @@ def seed_demo_data(session: Session) -> dict[str, int]:
 
     for order_no, username, product_name, status in DEMO_ORDERS:
         order = session.scalar(select(Order).where(Order.order_no == order_no))
+        delivered_at = (
+            datetime.now(UTC) - timedelta(days=3) if status == OrderStatus.DELIVERED else None
+        )
         if order is None:
             session.add(
                 Order(
@@ -76,8 +89,18 @@ def seed_demo_data(session: Session) -> dict[str, int]:
                     user_id=users[username].id,
                     product_id=products[product_name].id,
                     status=status.value,
+                    delivered_at=delivered_at,
+                    paid_amount=DEMO_PRODUCT_PRICES[product_name],
+                    shipping_amount=Decimal("0.00"),
+                    currency="CNY",
                 )
             )
+        else:
+            if order.delivered_at is None and status == OrderStatus.DELIVERED:
+                order.delivered_at = delivered_at
+            if order.paid_amount is None or order.paid_amount == Decimal("0.00"):
+                order.paid_amount = DEMO_PRODUCT_PRICES[product_name]
+            order.currency = order.currency or "CNY"
 
     session.commit()
     return {

@@ -68,8 +68,14 @@ class HandoffService:
             )
             self.session.add(existing)
 
-        chat_session.status = SessionStatus.NEED_HUMAN.value
-        chat_session.workflow_state = WorkflowState.NEED_HUMAN.value
+        if chat_session.status == SessionStatus.OPEN.value:
+            chat_session.control_version = (chat_session.control_version or 0) + 1
+        if chat_session.status not in {
+            SessionStatus.HUMAN_ACTIVE.value,
+            SessionStatus.CLOSED.value,
+        }:
+            chat_session.status = SessionStatus.NEED_HUMAN.value
+            chat_session.workflow_state = WorkflowState.NEED_HUMAN.value
         self.session.commit()
         self.session.refresh(existing)
         self.session.refresh(chat_session)
@@ -166,6 +172,7 @@ class HandoffService:
         handoff.status = "closed"
         handoff.closed_at = now
         chat_session.status = SessionStatus.CLOSED.value
+        chat_session.control_version = (chat_session.control_version or 0) + 1
         chat_session.workflow_state = WorkflowState.RESOLVED.value
         self.session.commit()
         self.session.refresh(handoff)

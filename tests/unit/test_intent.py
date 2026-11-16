@@ -133,10 +133,57 @@ def test_product_usage_question_is_not_misclassified_as_exchange():
     assert result.slots.issue_type == IssueType.PRODUCT_USAGE
 
 
+def test_shipping_policy_question_overrides_unknown_model_intent():
+    client = FakeIntentClient('{"intent":"unknown","slots":{},"confidence":0.5}')
+
+    result = asyncio.run(IntentService(client).extract(content="现货商品多久发货？"))
+
+    assert result.intent == AfterSalesIntent.AFTER_SALES_POLICY
+    assert result.slots.issue_type == IssueType.DELIVERY
+
+
+def test_order_query_with_shipping_word_keeps_order_query_intent():
+    client = FakeIntentClient(
+        '{"intent":"order_query","slots":{"order_no":"A10087"},"confidence":0.9}'
+    )
+
+    result = asyncio.run(IntentService(client).extract(content="订单 A10087 现在发货了吗？"))
+
+    assert result.intent == AfterSalesIntent.ORDER_QUERY
+    assert result.slots.order_no == "A10087"
+
+
+def test_product_usage_question_overrides_warranty_model_intent():
+    client = FakeIntentClient('{"intent":"warranty_question","slots":{},"confidence":0.6}')
+
+    result = asyncio.run(IntentService(client).extract(content="十四寸笔记本支持自己加内存吗？"))
+
+    assert result.intent == AfterSalesIntent.AFTER_SALES_POLICY
+    assert result.slots.issue_type == IssueType.PRODUCT_USAGE
+
+
+def test_explicit_warranty_question_remains_warranty():
+    client = FakeIntentClient('{"intent":"warranty_question","slots":{},"confidence":0.8}')
+
+    result = asyncio.run(IntentService(client).extract(content="键盘进水以后还能免费保修吗？"))
+
+    assert result.intent == AfterSalesIntent.WARRANTY_QUESTION
+
+
 def test_intent_service_accepts_json_inside_markdown_fence():
     client = FakeIntentClient('```json\n{"intent":"human_request","slots":{},"confidence":1}\n```')
 
     result = asyncio.run(IntentService(client).extract(content="我要人工"))
+
+    assert result.intent == AfterSalesIntent.HUMAN_REQUEST
+
+
+def test_intent_parser_extracts_json_from_short_surrounding_text():
+    client = FakeIntentClient(
+        '解析结果：{"intent":"human_request","slots":{},"confidence":1} 请处理'
+    )
+
+    result = asyncio.run(IntentService(client).extract(content="我要人工客服"))
 
     assert result.intent == AfterSalesIntent.HUMAN_REQUEST
 

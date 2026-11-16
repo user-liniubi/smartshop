@@ -34,6 +34,7 @@ def test_settings_load_from_environment(monkeypatch):
     assert settings.deepseek_api_key.get_secret_value() == "test-deepseek-key"
     assert settings.rag_chunk_size == 300
     assert settings.rag_chunk_overlap == 30
+    assert settings.agent_total_timeout_seconds == 180
 
 
 @pytest.mark.parametrize(

@@ -13,10 +13,12 @@ from backend.app.schemas.chat import (
     ChatMessageResponse,
     ChatSessionResponse,
     ChatTurnResponse,
+    OrderSelectionRequest,
 )
 from backend.app.schemas.handoff import HandoffRequest, HandoffResponse
 from backend.app.services.chat import ChatService
 from backend.app.services.handoffs import HandoffService
+from backend.app.services.order_context import OrderContextService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -78,6 +80,45 @@ def request_handoff(
         reason=request.reason,
     )
     return HandoffResponse.model_validate(handoff)
+
+
+@router.post(
+    "/sessions/{session_id}/order-selection",
+    response_model=ChatTurnResponse,
+)
+async def select_order_for_session(
+    session_id: Annotated[int, Path(gt=0)],
+    request: OrderSelectionRequest,
+    current_user: CurrentUser,
+    session: Annotated[Session, Depends(get_db)],
+    agent_service: Annotated[
+        AfterSalesAgentService,
+        Depends(get_after_sales_agent_service),
+    ],
+) -> ChatTurnResponse:
+    if current_user.role != "consumer":
+        raise AppError(
+            status_code=403,
+            code="consumer_role_required",
+            message="该操作仅限消费者账号",
+        )
+    chat_session = OrderContextService(session).select_candidate(
+        session_id=session_id,
+        user_id=current_user.id,
+        order_id=request.order_id,
+    )
+    order_no = (chat_session.slots_json or {}).get("order_no")
+    if not isinstance(order_no, str):
+        raise AppError(
+            status_code=409,
+            code="order_selection_failed",
+            message="订单选择未保存，请重新选择",
+        )
+    return await agent_service.handle_message(
+        session_id=session_id,
+        user_id=current_user.id,
+        content=f"已选择订单 {order_no}，请继续处理原售后问题。",
+    )
 
 
 @router.post(

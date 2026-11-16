@@ -16,14 +16,18 @@ graph TB
     Auth --> Knowledge[知识库 API]
     Auth --> Handoff[人工接管 API]
 
-    Chat --> Orchestrator[售后编排器]
+    Chat --> OrderContext[多订单候选与切换]
+    OrderContext --> Orchestrator[售后编排器]
     Orchestrator --> Intent[DeepSeek 意图与槽位]
     Orchestrator --> Tools[工具白名单]
     Orchestrator --> RAG[BGE + Chroma]
-    Orchestrator --> Rules[确定性规则]
+    Orchestrator --> Eligibility[售后资格与金额规则]
+    Eligibility --> Rules[确定性安全规则]
 
     Tools --> MySQL[(MySQL)]
-    Orchestrator --> Tickets[售后工单审批]
+    Eligibility --> Tickets[售后工单审批]
+    Tickets --> Events[工单事件与系统消息]
+    Events --> MySQL
     Tickets --> MySQL
     Handoff --> MySQL
     Knowledge --> MySQL
@@ -54,18 +58,25 @@ sequenceDiagram
     A->>I: 提取意图与槽位
     I->>L: 结构化 JSON 请求
     L-->>I: intent + slots
-    A->>A: 合并槽位并校验状态
+    A->>DB: 查询当前账号最近订单
+    A->>A: 合并槽位、解析订单指代并校验状态
     alt 信息不完整
         A->>DB: 保存追问
         A-->>U: ask_more_info
-    else 需要订单
+    else 多笔候选
+        A->>DB: 保存候选订单和等待选择状态
+        A-->>U: select_order + 候选列表
+    else 已确定订单
         A->>L: 请求工具选择
         A->>T: 执行 get_my_order
         T->>DB: order_no + user_id 查询
         A->>R: 检索商品售后政策
         R-->>A: evidence + citations
         A->>L: 订单事实 + 政策证据
-        A->>A: 确定性安全规则
+        A->>A: 售后资格、期限和金额确定性校验
+        A->>DB: 建单、事件和系统消息同一事务
+        A->>L: 订单事实 + 资格结果 + 政策证据
+        A->>A: 控制权版本和安全规则
         A->>DB: 保存回答、引用和审计
         A-->>U: answer
     end
@@ -77,6 +88,8 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> collecting_info
     collecting_info --> collecting_info: 信息仍缺失
+    collecting_info --> awaiting_order_selection: 多笔候选
+    awaiting_order_selection --> checking_order: 用户确认候选订单
     collecting_info --> checking_order: 槽位完整
     checking_order --> checking_policy: 订单查询成功
     checking_order --> collecting_info: 订单无效
@@ -85,6 +98,7 @@ stateDiagram-v2
     answer_ready --> resolved: 保存回答
     collecting_info --> need_human: 用户主动转人工
     checking_order --> need_human: 订单异常或工具失败
+    resolved --> awaiting_order_selection: 用户切换订单
 ```
 
 `chat_sessions.status` 表示渠道由 AI 还是人工控制；`workflow_state` 表示售后任务阶段，两者不能合并。
@@ -106,7 +120,7 @@ sequenceDiagram
     A->>API: 接管 handoff
     API->>DB: UPDATE WHERE status=pending
     DB-->>API: affected_rows=1
-    API->>DB: session.status=human_active
+    API->>DB: session.status=human_active, control_version+1
     A->>API: 人工回复
     API->>DB: 保存 sender_type=agent
     U->>API: 继续发送消息
@@ -135,12 +149,13 @@ sequenceDiagram
     W->>DB: 查询当前用户订单
     W->>R: 检索商品售后政策
     R-->>W: evidence + citations
-    W->>W: 校验订单状态和政策依据
-    W->>DB: 幂等创建 pending_approval 工单
+    W->>W: 确定性校验订单、期限、金额和政策依据
+    W->>DB: 事务写入 pending_approval 工单、事件和系统消息
+    W->>L: 生成基于资格结果和政策证据的解释
     W-->>U: 工单号 + 待审批提示
     A->>API: 查看待审批工单
     A->>API: 通过或拒绝
-    API->>DB: 条件更新审批状态
+    API->>DB: 条件更新审批状态，并写事件和系统消息
     U->>API: 查询自己的工单状态
 ```
 
@@ -187,10 +202,13 @@ sequenceDiagram
 |---|---|---|
 | 用户身份 | Bearer Token + `users` | 信任模型或前端传入的 `user_id` |
 | 订单事实 | MySQL `orders + products` | 从向量库或模型常识猜测订单状态 |
+| 订单定位 | 服务端候选订单 + 当前用户订单查询 | 信任模型直接指定订单归属 |
 | 售后政策 | Chroma 检索片段 + 来源文档 | 无证据时编造退款资格 |
+| 售后期限与金额 | `AfterSalesEligibilityService` + 订单金额/签收字段 | 让 LLM 自行计算期限或金额 |
 | 会话状态 | 后端状态机 | 模型直接写数据库状态 |
 | 工具调用 | ToolRegistry + `tool_invocations` | 任意 SQL 或未注册工具 |
-| 售后审批 | `after_sales_tickets` + 条件更新 | 模型直接决定审批或重复建单 |
+| 售后审批 | `after_sales_tickets` + 事件表 + 条件更新 | 模型直接决定审批、重复建单或遗漏状态记录 |
+| AI/人工控制权 | `chat_sessions.control_version` | 接管后继续写入 AI 消息或业务副作用 |
 
 ## 可观测性
 

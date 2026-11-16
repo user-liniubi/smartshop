@@ -21,20 +21,32 @@ _ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
     WorkflowState.COLLECTING_INFO: frozenset(
         {
             WorkflowState.COLLECTING_INFO,
+            WorkflowState.AWAITING_ORDER_SELECTION,
             WorkflowState.CHECKING_ORDER,
             WorkflowState.CHECKING_POLICY,
+            WorkflowState.NEED_HUMAN,
+        }
+    ),
+    WorkflowState.AWAITING_ORDER_SELECTION: frozenset(
+        {
+            WorkflowState.AWAITING_ORDER_SELECTION,
+            WorkflowState.COLLECTING_INFO,
+            WorkflowState.CHECKING_ORDER,
             WorkflowState.NEED_HUMAN,
         }
     ),
     WorkflowState.CHECKING_ORDER: frozenset(
         {
             WorkflowState.COLLECTING_INFO,
+            WorkflowState.AWAITING_ORDER_SELECTION,
             WorkflowState.CHECKING_POLICY,
             WorkflowState.NEED_HUMAN,
         }
     ),
     WorkflowState.CHECKING_POLICY: frozenset(
         {
+            WorkflowState.AWAITING_ORDER_SELECTION,
+            WorkflowState.CHECKING_ORDER,
             WorkflowState.ANSWER_READY,
             WorkflowState.NEED_HUMAN,
         }
@@ -46,7 +58,15 @@ _ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
         }
     ),
     WorkflowState.NEED_HUMAN: frozenset({WorkflowState.NEED_HUMAN}),
-    WorkflowState.RESOLVED: frozenset({WorkflowState.RESOLVED}),
+    WorkflowState.RESOLVED: frozenset(
+        {
+            WorkflowState.COLLECTING_INFO,
+            WorkflowState.AWAITING_ORDER_SELECTION,
+            WorkflowState.CHECKING_ORDER,
+            WorkflowState.CHECKING_POLICY,
+            WorkflowState.RESOLVED,
+        }
+    ),
 }
 
 _SLOT_LABELS = {
@@ -58,11 +78,25 @@ _SLOT_LABELS = {
 class AfterSalesOrchestrator:
     """Apply backend-controlled workflow decisions to an owned chat session."""
 
-    def decide(self, result: IntentResult) -> OrchestrationDecision:
+    def decide(
+        self,
+        result: IntentResult,
+        *,
+        order_selection_required: bool = False,
+        order_selection_prompt: str | None = None,
+    ) -> OrchestrationDecision:
         if result.intent == AfterSalesIntent.HUMAN_REQUEST:
             return OrchestrationDecision(
                 action=WorkflowAction.HANDOFF,
                 workflow_state=WorkflowState.NEED_HUMAN,
+            )
+
+        if order_selection_required:
+            return OrchestrationDecision(
+                action=WorkflowAction.SELECT_ORDER,
+                workflow_state=WorkflowState.AWAITING_ORDER_SELECTION,
+                missing_slots=["order_no"],
+                reply_text=order_selection_prompt,
             )
 
         required_slots = _REQUIRED_SLOTS.get(result.intent, ())
@@ -105,6 +139,8 @@ class AfterSalesOrchestrator:
         session_id: int,
         user_id: int,
         result: IntentResult,
+        order_selection_required: bool = False,
+        order_selection_prompt: str | None = None,
     ) -> tuple[ChatSession, OrchestrationDecision]:
         chat_session = get_session_owned_by_user(
             session,
@@ -119,7 +155,11 @@ class AfterSalesOrchestrator:
             )
 
         current_state = WorkflowState(chat_session.workflow_state)
-        decision = self.decide(result)
+        decision = self.decide(
+            result,
+            order_selection_required=order_selection_required,
+            order_selection_prompt=order_selection_prompt,
+        )
         if decision.workflow_state not in _ALLOWED_TRANSITIONS[current_state]:
             raise AppError(
                 status_code=409,

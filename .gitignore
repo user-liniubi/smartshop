@@ -16,6 +16,8 @@ htmlcov/
 # Runtime data
 data/uploads/
 data/chroma/
+data/*.sqlite3
+data/runtime_mysql/
 .mysql-smoke-data*/
 logs/
 *.log

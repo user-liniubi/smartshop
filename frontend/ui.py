@@ -126,6 +126,7 @@ SESSION_STATUS_LABELS = {
 
 WORKFLOW_LABELS = {
     "collecting_info": "收集信息",
+    "awaiting_order_selection": "选择订单",
     "checking_order": "核验订单",
     "checking_policy": "检索政策",
     "answer_ready": "生成建议",
@@ -149,6 +150,14 @@ AFTER_SALES_TICKET_STATUS_LABELS = {
 AFTER_SALES_TICKET_TYPE_LABELS = {
     "return": "退货",
     "exchange": "换货",
+}
+
+AFTER_SALES_TICKET_EVENT_LABELS = {
+    "created": "工单创建",
+    "approved": "审批通过",
+    "rejected": "审批驳回",
+    "cancelled": "工单取消",
+    "system_note": "系统记录",
 }
 
 
@@ -264,7 +273,10 @@ def render_session_meta(
     st.caption(f"创建时间：{format_timestamp(session.get('created_at'))}")
 
 
-def render_after_sales_ticket(ticket: dict[str, Any] | None) -> None:
+def render_after_sales_ticket(
+    ticket: dict[str, Any] | None,
+    events: list[dict[str, Any]] | None = None,
+) -> None:
     st.markdown("#### 售后工单")
     if not ticket:
         st.caption("当前会话尚未生成售后工单")
@@ -275,5 +287,20 @@ def render_after_sales_ticket(ticket: dict[str, Any] | None) -> None:
         f"{after_sales_ticket_status_label(ticket['status'])}"
     )
     st.caption(ticket.get("issue_description", ""))
+    if ticket.get("refund_amount") is not None:
+        st.caption(f"参考退款金额：{ticket['refund_amount']} {ticket.get('currency', 'CNY')}")
+    if ticket.get("eligibility_reason"):
+        st.caption(f"资格规则：{ticket['eligibility_reason']}")
     if ticket.get("review_note"):
         st.caption(f"审批意见：{ticket['review_note']}")
+    if events:
+        with st.expander("查看处理记录", icon=":material/timeline:"):
+            for event in events:
+                label = AFTER_SALES_TICKET_EVENT_LABELS.get(
+                    event.get("event_type", ""),
+                    event.get("event_type", "事件"),
+                )
+                st.caption(
+                    f"{format_timestamp(event.get('created_at'))} · {label}"
+                    f"{' · ' + event['note'] if event.get('note') else ''}"
+                )

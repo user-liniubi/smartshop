@@ -36,6 +36,17 @@ _PRODUCT_USAGE_KEYWORDS = {
     "清洁",
     "使用",
 }
+_SHIPPING_POLICY_KEYWORDS = {
+    "发货",
+    "配送",
+    "运费",
+    "物流",
+}
+_WARRANTY_KEYWORDS = {
+    "保修",
+    "质保",
+    "warranty",
+}
 _EXPLICIT_RETURN_OR_EXCHANGE_KEYWORDS = {
     "退货",
     "退款",
@@ -49,6 +60,11 @@ _SUBMISSION_ACTION_PATTERN = re.compile(
     r"(申请|提交|办理|发起|确认|帮我|给我|(?:我)?想|(?:我)?要).{0,10}"
     r"(退货|换货|退款|退换)"
 )
+_ORDER_SWITCH_REFERENCE_PATTERN = re.compile(
+    r"(另一笔|另一个|别的|不是这个|换一笔|下一笔|"
+    r"第\s*[一二三四五六七八九十\d]+\s*(?:笔|个|单|条)|"
+    r"今天买的|昨天买的|前天买的)"
+)
 
 
 def extract_order_no(content: str) -> str | None:
@@ -59,14 +75,22 @@ def extract_order_no(content: str) -> str | None:
 
 
 def parse_intent_result(content: str) -> IntentResult:
-    """Parse a JSON-only model response, tolerating an accidental code fence."""
+    """Parse a JSON model response with conservative extraction and validation."""
 
     stripped = content.strip()
     if stripped.startswith("```"):
         stripped = stripped.split("\n", maxsplit=1)[1] if "\n" in stripped else ""
         if stripped.rstrip().endswith("```"):
             stripped = stripped.rstrip()[:-3].rstrip()
-    return IntentResult.model_validate(json.loads(stripped))
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        payload = json.loads(stripped[start : end + 1])
+    return IntentResult.model_validate(payload)
 
 
 def merge_slots(
@@ -107,6 +131,7 @@ def merge_slots(
 
     if fallback_order_no and fallback_order_no != merged.get("order_no"):
         merged["order_no"] = fallback_order_no
+        merged.pop("order_reference", None)
     return SlotUpdate.model_validate(merged)
 
 
@@ -159,18 +184,41 @@ class IntentService:
         submission_hint = detect_submission_request(content)
         if submission_hint is not None:
             slots = slots.model_copy(update={"submit_requested": submission_hint})
-        effective_intent = result.intent
         if (
-            any(keyword in content for keyword in _PRODUCT_USAGE_KEYWORDS)
-            and not any(keyword in content for keyword in _EXPLICIT_RETURN_OR_EXCHANGE_KEYWORDS)
-            and result.intent
-            in {
-                AfterSalesIntent.UNKNOWN,
-                AfterSalesIntent.EXCHANGE_REQUEST,
-            }
+            fallback_order_no is None
+            and slots.order_no
+            and _ORDER_SWITCH_REFERENCE_PATTERN.search(content)
+        ):
+            slots = slots.model_copy(
+                update={
+                    "order_no": None,
+                    "order_reference": content.strip()[:100],
+                }
+            )
+        effective_intent = result.intent
+        issue_type_update: IssueType | None = None
+        has_explicit_return_or_exchange = any(
+            keyword in content for keyword in _EXPLICIT_RETURN_OR_EXCHANGE_KEYWORDS
+        )
+        if (
+            result.intent != AfterSalesIntent.HUMAN_REQUEST
+            and fallback_order_no is None
+            and not has_explicit_return_or_exchange
+            and any(keyword in content for keyword in _SHIPPING_POLICY_KEYWORDS)
         ):
             effective_intent = AfterSalesIntent.AFTER_SALES_POLICY
-            slots = slots.model_copy(update={"issue_type": IssueType.PRODUCT_USAGE})
+            issue_type_update = IssueType.DELIVERY
+        if (
+            any(keyword in content for keyword in _PRODUCT_USAGE_KEYWORDS)
+            and fallback_order_no is None
+            and not has_explicit_return_or_exchange
+            and result.intent != AfterSalesIntent.HUMAN_REQUEST
+            and not any(keyword in content.lower() for keyword in _WARRANTY_KEYWORDS)
+        ):
+            effective_intent = AfterSalesIntent.AFTER_SALES_POLICY
+            issue_type_update = IssueType.PRODUCT_USAGE
+        if issue_type_update is not None:
+            slots = slots.model_copy(update={"issue_type": issue_type_update})
         return IntentResult(
             intent=effective_intent,
             slots=slots,

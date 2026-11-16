@@ -23,11 +23,18 @@ class SessionStatus(StrEnum):
 
 class WorkflowState(StrEnum):
     COLLECTING_INFO = "collecting_info"
+    AWAITING_ORDER_SELECTION = "awaiting_order_selection"
     CHECKING_ORDER = "checking_order"
     CHECKING_POLICY = "checking_policy"
     ANSWER_READY = "answer_ready"
     NEED_HUMAN = "need_human"
     RESOLVED = "resolved"
+
+
+class OrderSelectionState(StrEnum):
+    NONE = "none"
+    AWAITING_SELECTION = "awaiting_selection"
+    SELECTED = "selected"
 
 
 class SenderType(StrEnum):
@@ -71,6 +78,26 @@ class HandoffSource(StrEnum):
 class AfterSalesTicketType(StrEnum):
     RETURN = "return"
     EXCHANGE = "exchange"
+
+
+class AfterSalesEligibilityStatus(StrEnum):
+    ELIGIBLE = "eligible"
+    NEED_HUMAN_REVIEW = "need_human_review"
+    NOT_ELIGIBLE = "not_eligible"
+
+
+class AfterSalesTicketEventType(StrEnum):
+    CREATED = "created"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    SYSTEM_NOTE = "system_note"
+
+
+class AfterSalesActorType(StrEnum):
+    CONSUMER = "consumer"
+    AGENT = "agent"
+    SYSTEM = "system"
 
 
 class AfterSalesTicketStatus(StrEnum):

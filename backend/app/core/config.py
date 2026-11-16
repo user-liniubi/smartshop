@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     rag_min_similarity: float = Field(default=0.5, ge=-1, le=1)
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
     agent_max_tool_rounds: int = Field(default=2, ge=1, le=4)
-    agent_total_timeout_seconds: int = Field(default=60, ge=5, le=180)
+    agent_total_timeout_seconds: int = Field(default=180, ge=5, le=300)
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -33,6 +33,7 @@ from backend.app.models import (
     SessionStatus,
     WorkflowState,
 )
+from backend.app.repositories.after_sales_tickets import get_ticket_by_session
 from backend.app.repositories.chat import (
     add_message,
     get_session_owned_by_user,
@@ -42,10 +43,15 @@ from backend.app.repositories.handoffs import get_handoff_by_session
 from backend.app.schemas.after_sales import AfterSalesTicketResponse
 from backend.app.schemas.chat import ChatMessageResponse, ChatTurnResponse
 from backend.app.schemas.handoff import HandoffResponse
+from backend.app.services.after_sales_eligibility import (
+    AfterSalesEligibility,
+    AfterSalesEligibilityService,
+)
 from backend.app.services.after_sales_tickets import AfterSalesTicketService
 from backend.app.services.answers import AnswerService
 from backend.app.services.handoffs import HandoffService
 from backend.app.services.llm import DeepSeekClient
+from backend.app.services.order_context import OrderContextService
 from backend.app.services.rag import NO_EVIDENCE_ANSWER, RAGContext, RAGService
 from backend.app.services.rules import AfterSalesRuleService
 
@@ -82,6 +88,8 @@ class AfterSalesAgentService:
         self.orchestrator = orchestrator or AfterSalesOrchestrator()
         self.tools = tools or ToolRegistry()
         self.rules = rules or AfterSalesRuleService()
+        self.order_context = OrderContextService(session)
+        self.eligibility = AfterSalesEligibilityService()
         self.answer_service = AnswerService(llm)
 
     async def handle_message(
@@ -96,6 +104,7 @@ class AfterSalesAgentService:
             session_id=session_id,
             user_id=user_id,
         )
+        expected_control_version = chat_session.control_version
         user_message = add_message(
             self.session,
             session_id=chat_session.id,
@@ -131,6 +140,7 @@ class AfterSalesAgentService:
                 chat_session=chat_session,
                 user_message=user_message,
                 reason="意图识别超时，需要人工客服继续处理",
+                expected_control_version=expected_control_version,
             )
         except AppError as exc:
             logger.warning(
@@ -142,13 +152,29 @@ class AfterSalesAgentService:
                 chat_session=chat_session,
                 user_message=user_message,
                 reason=f"意图识别失败（{exc.code}），需要人工客服继续处理",
+                expected_control_version=expected_control_version,
+            )
+        if not self._control_allowed(
+            chat_session,
+            expected_control_version=expected_control_version,
+        ):
+            return self._waiting_for_agent_response(
+                chat_session=chat_session,
+                user_message=user_message,
             )
         intent_result = self._preserve_active_task(intent_result)
+        order_resolution = self.order_context.resolve_for_turn(
+            chat_session=chat_session,
+            intent_result=intent_result,
+            content=content,
+        )
         chat_session, decision = self.orchestrator.apply(
             session=self.session,
             session_id=session_id,
             user_id=user_id,
             result=intent_result,
+            order_selection_required=order_resolution.awaiting_selection,
+            order_selection_prompt=order_resolution.prompt,
         )
         logger.info(
             "agent orchestration action=%s workflow=%s duration_ms=%.2f",
@@ -162,8 +188,13 @@ class AfterSalesAgentService:
                 chat_session=chat_session,
                 user_message=user_message,
                 answer=decision.reply_text,
-                action=ConversationAction.ASK_MORE_INFO,
+                action=(
+                    ConversationAction.SELECT_ORDER
+                    if decision.action.value == "select_order"
+                    else ConversationAction.ASK_MORE_INFO
+                ),
                 missing_slots=decision.missing_slots,
+                expected_control_version=expected_control_version,
             )
 
         if decision.action.value == "handoff":
@@ -172,6 +203,7 @@ class AfterSalesAgentService:
                 user_message=user_message,
                 reason="用户主动申请人工客服",
                 source=HandoffSource.USER,
+                expected_control_version=expected_control_version,
             )
 
         try:
@@ -182,12 +214,14 @@ class AfterSalesAgentService:
                         user_message=user_message,
                         content=content,
                         intent_result=intent_result,
+                        expected_control_version=expected_control_version,
                     )
                 return await self._handle_policy_task(
                     chat_session=chat_session,
                     user_message=user_message,
                     content=content,
                     intent_result=intent_result,
+                    expected_control_version=expected_control_version,
                 )
         except TimeoutError:
             logger.warning("Agent request timeout session_id=%s", session_id)
@@ -195,6 +229,7 @@ class AfterSalesAgentService:
                 chat_session=chat_session,
                 user_message=user_message,
                 reason="AI 服务超时，需要人工客服继续处理",
+                expected_control_version=expected_control_version,
             )
         except AppError as exc:
             logger.warning(
@@ -206,6 +241,7 @@ class AfterSalesAgentService:
                 chat_session=chat_session,
                 user_message=user_message,
                 reason=f"AI 处理失败（{exc.code}），需要人工客服继续处理",
+                expected_control_version=expected_control_version,
             )
         except Exception:
             logger.exception("Unexpected agent failure session_id=%s", session_id)
@@ -213,6 +249,7 @@ class AfterSalesAgentService:
                 chat_session=chat_session,
                 user_message=user_message,
                 reason="AI 处理出现异常，需要人工客服继续处理",
+                expected_control_version=expected_control_version,
             )
 
     async def _handle_order_task(
@@ -222,6 +259,7 @@ class AfterSalesAgentService:
         user_message,
         content: str,
         intent_result: IntentResult,
+        expected_control_version: int,
     ) -> ChatTurnResponse:
         order_no = intent_result.slots.order_no
         if order_no is None:
@@ -231,6 +269,7 @@ class AfterSalesAgentService:
                 answer="请提供需要查询的订单号。",
                 action=ConversationAction.ASK_MORE_INFO,
                 missing_slots=["order_no"],
+                expected_control_version=expected_control_version,
             )
 
         plan = await self._plan_order_tool(content=content, order_no=order_no)
@@ -247,6 +286,8 @@ class AfterSalesAgentService:
                 arguments=plan.arguments,
             )
         except AppError as exc:
+            if exc.code == "order_not_found":
+                self.order_context.on_order_lookup_failed(chat_session)
             self.orchestrator.transition(
                 session=self.session,
                 chat_session=chat_session,
@@ -263,6 +304,7 @@ class AfterSalesAgentService:
                 answer=answer,
                 action=ConversationAction.ASK_MORE_INFO,
                 missing_slots=["order_no"] if exc.code == "order_not_found" else [],
+                expected_control_version=expected_control_version,
                 tool_results=[
                     ToolResultSummary(
                         tool_name=plan.name,
@@ -274,6 +316,23 @@ class AfterSalesAgentService:
             )
 
         order_facts = tool_result.result
+        if not self._control_allowed(
+            chat_session,
+            expected_control_version=expected_control_version,
+        ):
+            return self._waiting_for_agent_response(
+                chat_session=chat_session,
+                user_message=user_message,
+            )
+        order_id = int(order_facts["order_id"])
+        order = self.session.get(Order, order_id)
+        if order is None:
+            raise AppError(
+                status_code=404,
+                code="order_not_found",
+                message="订单不存在",
+            )
+        self.order_context.on_order_verified(chat_session, order)
         product_id = int(order_facts["product_id"])
         chat_session.slots_json = {
             **chat_session.slots_json,
@@ -286,6 +345,29 @@ class AfterSalesAgentService:
             chat_session=chat_session,
             target=WorkflowState.CHECKING_POLICY,
         )
+
+        eligibility: AfterSalesEligibility | None = None
+        request_type: AfterSalesTicketType | None = None
+        if intent_result.intent in {
+            AfterSalesIntent.RETURN_REQUEST,
+            AfterSalesIntent.EXCHANGE_REQUEST,
+        }:
+            request_type = (
+                AfterSalesTicketType.RETURN
+                if intent_result.intent == AfterSalesIntent.RETURN_REQUEST
+                else AfterSalesTicketType.EXCHANGE
+            )
+            eligibility = self.eligibility.evaluate(
+                order=order,
+                request_type=request_type.value,
+                issue_description=intent_result.slots.issue_description or "",
+            )
+        elif intent_result.intent == AfterSalesIntent.WARRANTY_QUESTION:
+            eligibility = self.eligibility.evaluate(
+                order=order,
+                request_type="warranty",
+                issue_description=intent_result.slots.issue_description or "",
+            )
 
         rag_context = await self._retrieve_policy(
             content=content,
@@ -305,6 +387,8 @@ class AfterSalesAgentService:
                 reason=decision.handoff_reason or "售后规则要求人工复核",
                 source=HandoffSource.RULE,
                 answer=decision.answer,
+                eligibility=eligibility,
+                expected_control_version=expected_control_version,
                 tool_results=[
                     ToolResultSummary(
                         tool_name=tool_result.tool_name,
@@ -314,27 +398,31 @@ class AfterSalesAgentService:
                 ],
             )
 
-        history = self._history_for_model(chat_session.id)
-        answer = await self.answer_service.generate(
-            question=content,
-            intent=intent_result.intent.value,
-            order_facts=order_facts,
-            rag_context=rag_context,
-            history=history,
-        )
-        rule_decision = self.rules.enforce(
-            answer=answer,
-            intent=intent_result.intent,
-            order_facts=order_facts,
-            policy_grounded=rag_context.grounded,
-        )
-        if rule_decision.handoff_required:
+        if eligibility is not None and eligibility.result.value == "need_human_review":
             return self._create_handoff_turn(
                 chat_session=chat_session,
                 user_message=user_message,
-                reason=rule_decision.handoff_reason or "售后安全规则触发",
+                reason=eligibility.explanation,
                 source=HandoffSource.RULE,
-                answer=rule_decision.answer,
+                answer=eligibility.explanation,
+                eligibility=eligibility,
+                expected_control_version=expected_control_version,
+                tool_results=[
+                    ToolResultSummary(
+                        tool_name=tool_result.tool_name,
+                        status="success",
+                        result=order_facts,
+                    )
+                ],
+            )
+        if eligibility is not None and eligibility.result.value == "not_eligible":
+            return self._finish_with_answer(
+                chat_session=chat_session,
+                user_message=user_message,
+                answer=eligibility.explanation,
+                rag_context=rag_context,
+                eligibility=eligibility,
+                expected_control_version=expected_control_version,
                 tool_results=[
                     ToolResultSummary(
                         tool_name=tool_result.tool_name,
@@ -354,32 +442,68 @@ class AfterSalesAgentService:
             }
             and intent_result.slots.submit_requested is True
         ):
-            order_id = order_facts.get("order_id")
             issue_description = intent_result.slots.issue_description
-            if not isinstance(order_id, int) or not issue_description:
+            if not issue_description:
                 raise AppError(
                     status_code=500,
                     code="after_sales_ticket_context_missing",
-                    message="售后工单缺少订单或问题信息",
+                    message="售后工单缺少问题信息",
                 )
-            order = self.session.get(Order, order_id)
-            if order is None:
+            if request_type is None or eligibility is None:
                 raise AppError(
-                    status_code=404,
-                    code="order_not_found",
-                    message="订单不存在",
+                    status_code=500,
+                    code="after_sales_eligibility_missing",
+                    message="售后资格校验结果缺失",
                 )
-            request_type = (
-                AfterSalesTicketType.RETURN
-                if intent_result.intent == AfterSalesIntent.RETURN_REQUEST
-                else AfterSalesTicketType.EXCHANGE
-            )
+            if not self._control_allowed(
+                chat_session,
+                expected_control_version=expected_control_version,
+            ):
+                return self._waiting_for_agent_response(
+                    chat_session=chat_session,
+                    user_message=user_message,
+                )
             ticket, ticket_created = AfterSalesTicketService(self.session).create_for_session(
                 chat_session=chat_session,
                 order=order,
                 request_type=request_type,
                 issue_description=issue_description,
                 citations=rag_context.citations,
+                eligibility=eligibility,
+            )
+
+        history = self._history_for_model(chat_session.id)
+        answer = await self.answer_service.generate(
+            question=content,
+            intent=intent_result.intent.value,
+            order_facts=order_facts,
+            rag_context=rag_context,
+            history=history,
+            eligibility=eligibility,
+        )
+        rule_decision = self.rules.enforce(
+            answer=answer,
+            intent=intent_result.intent,
+            order_facts=order_facts,
+            policy_grounded=rag_context.grounded,
+        )
+        if rule_decision.handoff_required:
+            return self._create_handoff_turn(
+                chat_session=chat_session,
+                user_message=user_message,
+                reason=rule_decision.handoff_reason or "售后安全规则触发",
+                source=HandoffSource.RULE,
+                answer=rule_decision.answer,
+                eligibility=eligibility,
+                expected_control_version=expected_control_version,
+                after_sales_ticket=ticket,
+                tool_results=[
+                    ToolResultSummary(
+                        tool_name=tool_result.tool_name,
+                        status="success",
+                        result=order_facts,
+                    )
+                ],
             )
 
         return self._finish_with_answer(
@@ -387,6 +511,8 @@ class AfterSalesAgentService:
             user_message=user_message,
             answer=rule_decision.answer,
             rag_context=rag_context,
+            eligibility=eligibility,
+            expected_control_version=expected_control_version,
             after_sales_ticket=ticket,
             ticket_created=ticket_created,
             tool_results=[
@@ -405,6 +531,7 @@ class AfterSalesAgentService:
         user_message,
         content: str,
         intent_result: IntentResult,
+        expected_control_version: int,
     ) -> ChatTurnResponse:
         rag_context = await self._retrieve_policy(
             content=content,
@@ -424,6 +551,7 @@ class AfterSalesAgentService:
                 reason=rule_decision.handoff_reason or "缺少政策依据",
                 source=HandoffSource.RULE,
                 answer=rule_decision.answer,
+                expected_control_version=expected_control_version,
             )
 
         answer = await self.answer_service.generate(
@@ -432,6 +560,7 @@ class AfterSalesAgentService:
             order_facts=None,
             rag_context=rag_context,
             history=self._history_for_model(chat_session.id),
+            eligibility=None,
         )
         rule_decision = self.rules.enforce(
             answer=answer,
@@ -446,12 +575,14 @@ class AfterSalesAgentService:
                 reason=rule_decision.handoff_reason or "售后安全规则触发",
                 source=HandoffSource.RULE,
                 answer=rule_decision.answer,
+                expected_control_version=expected_control_version,
             )
         return self._finish_with_answer(
             chat_session=chat_session,
             user_message=user_message,
             answer=rule_decision.answer or NO_EVIDENCE_ANSWER,
             rag_context=rag_context,
+            expected_control_version=expected_control_version,
         )
 
     async def _plan_order_tool(self, *, content: str, order_no: str) -> ToolCallPlan:
@@ -521,11 +652,16 @@ class AfterSalesAgentService:
         user_message,
         answer: str,
         rag_context: RAGContext,
+        expected_control_version: int,
         tool_results: list[ToolResultSummary] | None = None,
+        eligibility: AfterSalesEligibility | None = None,
         after_sales_ticket: AfterSalesTicket | None = None,
         ticket_created: bool = False,
     ) -> ChatTurnResponse:
-        if not self._ai_reply_allowed(chat_session):
+        if not self._control_allowed(
+            chat_session,
+            expected_control_version=expected_control_version,
+        ):
             return self._waiting_for_agent_response(
                 chat_session=chat_session,
                 user_message=user_message,
@@ -536,17 +672,6 @@ class AfterSalesAgentService:
                 chat_session=chat_session,
                 target=WorkflowState.ANSWER_READY,
             )
-        if after_sales_ticket is not None:
-            if ticket_created:
-                answer = (
-                    f"{answer}\n\n已完成订单和政策核验，售后工单 "
-                    f"{after_sales_ticket.ticket_no} 已创建，当前等待人工审批。"
-                )
-            else:
-                answer = (
-                    f"{answer}\n\n当前会话已关联售后工单 "
-                    f"{after_sales_ticket.ticket_no}，请勿重复提交。"
-                )
         assistant_message = add_message(
             self.session,
             session_id=chat_session.id,
@@ -568,6 +693,7 @@ class AfterSalesAgentService:
             ),
             workflow_state=WorkflowState(chat_session.workflow_state),
             tool_results=tool_results or [],
+            eligibility=(eligibility.to_response() if eligibility is not None else None),
             after_sales_ticket=(
                 AfterSalesTicketResponse.model_validate(after_sales_ticket)
                 if after_sales_ticket is not None
@@ -583,8 +709,19 @@ class AfterSalesAgentService:
         reason: str,
         source: HandoffSource,
         answer: str | None = None,
+        eligibility: AfterSalesEligibility | None = None,
+        expected_control_version: int | None = None,
+        after_sales_ticket: AfterSalesTicket | None = None,
         tool_results: list[ToolResultSummary] | None = None,
     ) -> ChatTurnResponse:
+        if expected_control_version is not None and not self._control_allowed(
+            chat_session,
+            expected_control_version=expected_control_version,
+        ):
+            return self._waiting_for_agent_response(
+                chat_session=chat_session,
+                user_message=user_message,
+            )
         handoff, created = HandoffService(self.session).ensure_handoff(
             chat_session=chat_session,
             reason=reason,
@@ -610,6 +747,12 @@ class AfterSalesAgentService:
             ),
             workflow_state=WorkflowState.NEED_HUMAN,
             tool_results=tool_results or [],
+            eligibility=(eligibility.to_response() if eligibility is not None else None),
+            after_sales_ticket=(
+                AfterSalesTicketResponse.model_validate(after_sales_ticket)
+                if after_sales_ticket is not None
+                else None
+            ),
             handoff=HandoffResponse.model_validate(handoff),
         )
 
@@ -619,13 +762,20 @@ class AfterSalesAgentService:
         chat_session: ChatSession,
         user_message,
         reason: str,
+        expected_control_version: int | None = None,
     ) -> ChatTurnResponse:
+        ticket = get_ticket_by_session(
+            self.session,
+            session_id=chat_session.id,
+        )
         return self._create_handoff_turn(
             chat_session=chat_session,
             user_message=user_message,
             reason=reason,
             source=HandoffSource.AI,
             answer=("当前 AI 服务暂时无法稳定处理这个问题。你的消息已保存，并已为你转接人工客服。"),
+            expected_control_version=expected_control_version,
+            after_sales_ticket=ticket,
         )
 
     def _save_turn(
@@ -636,9 +786,13 @@ class AfterSalesAgentService:
         answer: str,
         action: ConversationAction,
         missing_slots: list[str],
+        expected_control_version: int,
         tool_results: list[ToolResultSummary] | None = None,
     ) -> ChatTurnResponse:
-        if not self._ai_reply_allowed(chat_session):
+        if not self._control_allowed(
+            chat_session,
+            expected_control_version=expected_control_version,
+        ):
             return self._waiting_for_agent_response(
                 chat_session=chat_session,
                 user_message=user_message,
@@ -682,13 +836,17 @@ class AfterSalesAgentService:
             handoff=HandoffResponse.model_validate(handoff),
         )
 
-    def _ai_reply_allowed(self, chat_session: ChatSession) -> bool:
+    def _control_allowed(
+        self,
+        chat_session: ChatSession,
+        *,
+        expected_control_version: int,
+    ) -> bool:
         self.session.refresh(chat_session)
-        return chat_session.status not in {
-            SessionStatus.NEED_HUMAN.value,
-            SessionStatus.HUMAN_ACTIVE.value,
-            SessionStatus.CLOSED.value,
-        }
+        return (
+            chat_session.status == SessionStatus.OPEN.value
+            and chat_session.control_version == expected_control_version
+        )
 
     def _preserve_active_task(self, result: IntentResult) -> IntentResult:
         issue_type = result.slots.issue_type
@@ -705,6 +863,7 @@ class AfterSalesAgentService:
                 "content": message.content,
             }
             for message in list_messages(self.session, session_id=session_id)
+            if message.sender_type != SenderType.SYSTEM.value
         ]
 
     @staticmethod

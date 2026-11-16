@@ -3,6 +3,7 @@
 from backend.app.db.base import Base
 from backend.app.models.entities import (
     AfterSalesTicket,
+    AfterSalesTicketEvent,
     ChatMessage,
     ChatSession,
     Document,
@@ -15,12 +16,16 @@ from backend.app.models.entities import (
     User,
 )
 from backend.app.models.enums import (
+    AfterSalesActorType,
+    AfterSalesEligibilityStatus,
+    AfterSalesTicketEventType,
     AfterSalesTicketStatus,
     AfterSalesTicketType,
     HandoffSource,
     HandoffStatus,
     IngestionJobStatus,
     KnowledgeDocumentStatus,
+    OrderSelectionState,
     OrderStatus,
     SenderType,
     SessionStatus,
@@ -31,6 +36,10 @@ from backend.app.models.enums import (
 
 __all__ = [
     "AfterSalesTicket",
+    "AfterSalesTicketEvent",
+    "AfterSalesTicketEventType",
+    "AfterSalesActorType",
+    "AfterSalesEligibilityStatus",
     "AfterSalesTicketStatus",
     "AfterSalesTicketType",
     "Base",
@@ -45,6 +54,7 @@ __all__ = [
     "IngestionJobStatus",
     "KnowledgeDocumentStatus",
     "Order",
+    "OrderSelectionState",
     "OrderStatus",
     "Product",
     "SenderType",

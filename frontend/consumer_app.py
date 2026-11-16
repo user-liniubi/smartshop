@@ -135,6 +135,12 @@ def render_live_workspace() -> None:
         (ticket for ticket in after_sales_tickets if ticket["session_id"] == selected_id),
         None,
     )
+    ticket_events = []
+    if selected_ticket is not None:
+        try:
+            ticket_events = client().get_after_sales_ticket_events(selected_ticket["id"])
+        except ApiError:
+            ticket_events = []
 
     left, center, right = st.columns([0.22, 0.54, 0.24], gap="medium")
     with left:
@@ -271,6 +277,33 @@ def render_live_workspace() -> None:
 
     with right:
         with st.container(key="sm-detail"):
+            if selected.get("order_selection_state") == "awaiting_selection":
+                st.markdown("#### 选择订单")
+                candidate_ids = set(selected.get("candidate_order_ids_json") or [])
+                try:
+                    recent_orders = client().list_my_orders()
+                except ApiError as error:
+                    show_error(error)
+                    recent_orders = []
+                candidates = [order for order in recent_orders if order["id"] in candidate_ids]
+                if candidates:
+                    for order in candidates:
+                        product_name = (order.get("product") or {}).get("name", "未知商品")
+                        if st.button(
+                            f"{order['order_no']} · {product_name}",
+                            key=f"select-order-{selected_id}-{order['id']}",
+                            width="stretch",
+                        ):
+                            with st.spinner("正在核验所选订单并继续处理..."):
+                                try:
+                                    client().select_order(selected_id, order["id"])
+                                    st.rerun()
+                                except ApiError as error:
+                                    show_error(error)
+                else:
+                    st.caption("候选订单已失效，请重新发送售后问题。")
+                st.space("medium")
+
             order_no = (selected.get("slots_json") or {}).get("order_no")
             order = None
             if isinstance(order_no, str):
@@ -280,7 +313,18 @@ def render_live_workspace() -> None:
                     order = None
             render_order_card(order)
             st.space("medium")
-            render_after_sales_ticket(selected_ticket)
+            render_after_sales_ticket(selected_ticket, ticket_events)
+            if selected_ticket is not None and selected_ticket.get("status") == "pending_approval":
+                if st.button(
+                    "取消售后申请",
+                    icon=":material/cancel:",
+                    width="stretch",
+                ):
+                    try:
+                        client().cancel_after_sales_ticket(selected_ticket["id"])
+                        st.rerun()
+                    except ApiError as error:
+                        show_error(error)
             st.space("medium")
             render_session_meta(selected)
             st.space("medium")

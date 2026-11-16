@@ -62,7 +62,10 @@ def claim_handoff_atomic(
     session.execute(
         update(ChatSession)
         .where(ChatSession.id == handoff.session_id)
-        .values(status=SessionStatus.HUMAN_ACTIVE.value)
+        .values(
+            status=SessionStatus.HUMAN_ACTIVE.value,
+            control_version=ChatSession.control_version + 1,
+        )
         .execution_options(synchronize_session=False)
     )
     session.commit()

@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -18,6 +19,10 @@ class OrderResponse(BaseModel):
     order_no: str
     status: OrderStatus
     product: OrderProductResponse
+    delivered_at: datetime | None
+    paid_amount: Decimal
+    shipping_amount: Decimal
+    currency: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

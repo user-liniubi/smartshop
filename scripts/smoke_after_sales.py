@@ -1,4 +1,5 @@
 import json
+import sys
 
 from fastapi.testclient import TestClient
 
@@ -24,6 +25,7 @@ def _login(client: TestClient, username: str, password: str) -> dict[str, str]:
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")
     database = Database("sqlite+pysqlite:///:memory:")
     with database.engine.begin() as connection:
         Base.metadata.create_all(connection)
@@ -60,6 +62,13 @@ def main() -> None:
                 )
                 response.raise_for_status()
                 result = response.json()
+                messages = client.get(
+                    f"/chat/sessions/{session_id}/messages",
+                    headers=consumer_headers,
+                ).json()
+                system_messages = [
+                    message["content"] for message in messages if message["sender_type"] == "system"
+                ]
                 print(
                     json.dumps(
                         {
@@ -72,6 +81,8 @@ def main() -> None:
                                 if result["assistant_message"]
                                 else None
                             ),
+                            "ticket": result["after_sales_ticket"],
+                            "system_messages": system_messages,
                         },
                         ensure_ascii=False,
                     )

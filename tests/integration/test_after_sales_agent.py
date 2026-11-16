@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -11,6 +12,7 @@ from backend.app.core.exceptions import AppError
 from backend.app.models import (
     AfterSalesTicket,
     ChatSession,
+    Order,
     ToolInvocation,
     User,
     WorkflowState,
@@ -94,6 +96,7 @@ class FakeAgentLLM:
         order_facts: dict | None,
         evidence: str,
         history: list[dict[str, str]],
+        eligibility: dict | None,
     ) -> str:
         self.answer_requests.append(
             {
@@ -102,6 +105,7 @@ class FakeAgentLLM:
                 "order_facts": order_facts,
                 "evidence": evidence,
                 "history": history,
+                "eligibility": eligibility,
             }
         )
         if self.fail_answer:
@@ -214,15 +218,16 @@ def test_three_turn_return_flow_combines_order_facts_and_policy(
         invocation = session.scalar(select(ToolInvocation))
         task = session.get(ChatSession, session_id)
         ticket = session.scalar(select(AfterSalesTicket))
+        messages = list_messages(session, session_id=session_id)
 
     assert first.action == ConversationAction.ASK_MORE_INFO
-    assert set(first.missing_slots) == {"order_no", "issue_description"}
+    assert first.missing_slots == ["issue_description"]
     assert second.action == ConversationAction.ASK_MORE_INFO
     assert second.missing_slots == ["issue_description"]
     assert third.action == ConversationAction.TICKET_CREATED
     assert third.assistant_message is not None
     assert "delivered" in third.assistant_message.content
-    assert "待人工审批" in third.assistant_message.content
+    assert "待人工审批" not in third.assistant_message.content
     assert third.assistant_message.citations_json[0]["filename"] == ("warranty_policy.md")
     assert third.tool_results[0].result["order_no"] == "A10086"
     assert invocation is not None
@@ -236,8 +241,16 @@ def test_three_turn_return_flow_combines_order_facts_and_policy(
     assert ticket.status == "pending_approval"
     assert ticket.request_type == "return"
     assert ticket.issue_description == "左耳没有声音"
+    assert ticket.eligibility_result == "eligible"
+    assert str(ticket.refund_amount) == "899.00"
     assert third.after_sales_ticket is not None
     assert third.after_sales_ticket.ticket_no == ticket.ticket_no
+    assert ticket.ticket_no not in third.assistant_message.content
+    system_messages = [message for message in messages if message.sender_type == "system"]
+    assert len(system_messages) == 1
+    assert ticket.ticket_no in system_messages[0].content
+    assert "待人工审批" in system_messages[0].content
+    assert all(message["role"] != "system" for message in llm.answer_requests[-1]["history"])
 
 
 def test_policy_question_does_not_create_after_sales_ticket(
@@ -345,12 +358,16 @@ def test_model_failure_saves_message_and_creates_handoff(
             session_id=session_id,
             content="订单 A10086 左耳没有声音，想退货",
         )
+        ticket = session.scalar(select(AfterSalesTicket))
 
     assert response.action == ConversationAction.HANDOFF_CREATED
     assert response.handoff is not None
     assert response.handoff.source == "ai"
     assert response.assistant_message is not None
     assert "消息已保存" in response.assistant_message.content
+    assert response.after_sales_ticket is not None
+    assert ticket is not None
+    assert ticket.status == "pending_approval"
 
 
 def test_message_after_handoff_waits_without_ai_reply(
@@ -414,3 +431,71 @@ def test_intent_model_failure_falls_back_to_handoff(
     assert response.handoff.source == "ai"
     assert response.assistant_message is not None
     assert "消息已保存" in response.assistant_message.content
+
+
+def test_expired_warranty_does_not_create_ticket(
+    seeded_client,
+    test_database,
+):
+    user_id, session_id = create_agent_session(test_database)
+    with test_database.session_factory() as session:
+        order = session.scalar(select(Order).where(Order.order_no == "A10086"))
+        assert order is not None
+        order.delivered_at = datetime.now(UTC) - timedelta(days=800)
+        session.commit()
+
+    llm = FakeAgentLLM()
+    with test_database.session_factory() as session:
+        service = AfterSalesAgentService(
+            session=session,
+            settings=Settings(_env_file=None),
+            llm=llm,
+            rag_service=FakeRagService(),
+        )
+        response = run_message(
+            service,
+            user_id=user_id,
+            session_id=session_id,
+            content="订单 A10086 左耳没有声音，想退货",
+        )
+        ticket = session.scalar(select(AfterSalesTicket))
+
+    assert response.action == ConversationAction.ANSWER
+    assert response.eligibility is not None
+    assert response.eligibility.result.value == "not_eligible"
+    assert response.after_sales_ticket is None
+    assert ticket is None
+    assert llm.answer_requests == []
+
+
+def test_missing_delivery_time_requires_handoff_without_ticket(
+    seeded_client,
+    test_database,
+):
+    user_id, session_id = create_agent_session(test_database)
+    with test_database.session_factory() as session:
+        order = session.scalar(select(Order).where(Order.order_no == "A10086"))
+        assert order is not None
+        order.delivered_at = None
+        session.commit()
+
+    with test_database.session_factory() as session:
+        service = AfterSalesAgentService(
+            session=session,
+            settings=Settings(_env_file=None),
+            llm=FakeAgentLLM(),
+            rag_service=FakeRagService(),
+        )
+        response = run_message(
+            service,
+            user_id=user_id,
+            session_id=session_id,
+            content="订单 A10086 左耳没有声音，想退货",
+        )
+        ticket = session.scalar(select(AfterSalesTicket))
+
+    assert response.action == ConversationAction.HANDOFF_CREATED
+    assert response.eligibility is not None
+    assert response.eligibility.reason_code == "DELIVERY_TIME_MISSING"
+    assert response.handoff is not None
+    assert ticket is None
