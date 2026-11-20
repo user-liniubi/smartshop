@@ -161,7 +161,7 @@ def _write_report(
     category_counts = Counter(result.category for result in results)
     category_success = Counter(result.category for result in results if result.task_correct)
     lines = [
-        "# SmartShop Agent 固定评测报告",
+        "# SmartShop AfterSales 固定评测报告",
         "",
         "## 指标",
         "",

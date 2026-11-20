@@ -14,7 +14,7 @@ def test_consumer_login_page_renders():
     ).run()
 
     assert not app.exception
-    assert app.title[0].value == "SmartService AI"
+    assert app.title[0].value == "SmartShop AfterSales"
     assert len(app.text_input) == 2
     assert len(app.image) == 1
     assert app.button[0].label == "安全登录"
@@ -27,7 +27,7 @@ def test_agent_login_page_renders():
     ).run()
 
     assert not app.exception
-    assert app.title[0].value == "SmartService AI"
+    assert app.title[0].value == "SmartShop AfterSales"
     assert len(app.text_input) == 2
     assert len(app.image) == 1
     assert app.button[0].label == "安全登录"

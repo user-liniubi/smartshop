@@ -20,7 +20,7 @@ def main() -> None:
     document.set_metadata(
         {
             "title": "SmartShop 虚构售后常见问题",
-            "author": "SmartShop AI Demo",
+            "author": "SmartShop AfterSales Demo",
         }
     )
     document.save(target)

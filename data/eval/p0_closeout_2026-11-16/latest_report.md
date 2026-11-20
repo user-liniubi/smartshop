@@ -1,4 +1,4 @@
-# SmartShop Agent 固定评测报告
+# SmartShop AfterSales 固定评测报告
 
 ## 指标
 

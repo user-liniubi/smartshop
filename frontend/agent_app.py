@@ -38,7 +38,7 @@ SOURCE_LABELS = {
 }
 
 st.set_page_config(
-    page_title="SmartService AI · 消费电子客服工作台",
+    page_title="SmartShop AfterSales · 售后工作台",
     page_icon=":material/support_agent:",
     layout="wide",
 )
@@ -188,7 +188,7 @@ def render_after_sales_ticket_workspace() -> None:
 if st.session_state.agent_token is None:
     username, password, submitted = render_login_screen(
         role="客服",
-        brand_title="SmartService AI",
+        brand_title="SmartShop AfterSales",
         subtitle="统一处理消费电子产品售后任务、会话上下文与人工回复。",
         account_hint="演示账号：agent_demo / Agent123!",
     )
@@ -238,7 +238,7 @@ def render_live_workspace() -> None:
     with left:
         with st.container(key="agent-nav"):
             with st.container(key="brand-block"):
-                st.markdown("### :material/support_agent: SmartService AI")
+                st.markdown("### :material/support_agent: SmartShop AfterSales")
                 st.caption("消费电子客服工作台")
 
             st.markdown("#### 工作队列")

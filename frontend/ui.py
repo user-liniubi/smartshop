@@ -216,7 +216,7 @@ def render_message(message: dict[str, Any], *, staff_view: bool = False) -> None
     if sender == "agent":
         label = "人工客服"
     elif sender == "assistant":
-        label = "SmartService AI"
+        label = "SmartShop AfterSales"
     elif sender == "system":
         label = "系统"
     else:

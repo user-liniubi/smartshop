@@ -1,7 +1,7 @@
 [project]
-name = "smartshop-ai"
+name = "smartshop-aftersales"
 version = "1.0.0"
-description = "Consumer electronics after-sales customer service powered by RAG and agents"
+description = "Trustworthy consumer electronics after-sales decision system with evidence-grounded RAG and human-in-the-loop workflow"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [

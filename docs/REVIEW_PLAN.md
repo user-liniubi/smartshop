@@ -1,7 +1,7 @@
 # 面试复习计划：从 RAG 开始
 
 > **依据**：`docs/RAG_INTERVIEW_GUIDE.md`（主线，§19 给出复习顺序）、`docs/PROJECT_DEEP_DIVE.md`（全项目衔接）、`docs/INTERVIEW_GUIDE.md`、`docs/开发手册-售后闭环V2.md` V2.1、`docs/FINAL_ACCEPTANCE.md`
-> **项目版本**：v1.0.0｜**核心定位**：面向消费电子产品的单商家售后高级 RAG + 受控业务工作流
+> **项目版本**：v1.0.0｜**核心定位**：面向消费电子售后的可信决策系统：证据约束 RAG + 受控业务工作流 + 人在回路
 > **假设**：每天 90 分钟，共 10 天（两个工作周）。时间不足见文末「5 天压缩版」。
 > **范围说明**：Day 1～7 是 RAG 主线；Day 8～10 延伸到受控工作流、有限 Tool Calling、状态机、权限与项目叙事。项目不是自主多步 Agent。
 
@@ -120,7 +120,7 @@ Day9  models/enums.py  →  repositories/orders.py  →  services/handoffs.py
 | Q13 | 为什么用 Celery 异步索引 | D6 | ☐ |
 | Q14 | 异步任务如何幂等 | D6 | ☐ |
 | Q15 | 删除文档后为什么仍可能答得出来 | D6 | ☐ |
-| Q16 | 高级 RAG、受控工作流与 Agent 的边界 | D8 | ☐ |
+| Q16 | 证据约束 RAG、受控工作流与 Agent 的边界 | D8 | ☐ |
 | Q17 | 为什么不让模型自由选所有工具 | D8 | ☐ |
 | Q18 | 为什么先查订单再检索政策 | D8 | ☐ |
 | Q19 | 如何防止相似商品串资料 | D8 | ☐ |

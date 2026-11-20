@@ -2085,7 +2085,7 @@ wheels = [
 ]
 
 [[package]]
-name = "smartshop-ai"
+name = "smartshop-aftersales"
 version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
